@@ -1,0 +1,11 @@
+[package]
+name = "unicode"
+version = "1.0.0"
+authors = ["The Rust Project Developers"]
+
+[lib]
+name = "unicode"
+path = "lib.rs"
+
+[dependencies.core]
+path = "../libcore"
