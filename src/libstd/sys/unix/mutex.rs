@@ -11,16 +11,20 @@
 use prelude::v1::*;
 
 use cell::UnsafeCell;
+#[cfg(feature = "thread")]
 use sys::sync as ffi;
 use sys_common::mutex;
 
+#[cfg(feature = "thread")]
 pub struct Mutex { inner: UnsafeCell<ffi::pthread_mutex_t> }
 
 #[inline]
+#[cfg(feature = "thread")]
 pub unsafe fn raw(m: &Mutex) -> *mut ffi::pthread_mutex_t {
     m.inner.get()
 }
 
+#[cfg(feature = "thread")]
 pub const MUTEX_INIT: Mutex = Mutex {
     inner: UnsafeCell { value: ffi::PTHREAD_MUTEX_INITIALIZER },
 };
@@ -28,6 +32,7 @@ pub const MUTEX_INIT: Mutex = Mutex {
 unsafe impl Send for Mutex {}
 unsafe impl Sync for Mutex {}
 
+#[cfg(feature = "thread")]
 impl Mutex {
     #[inline]
     pub unsafe fn new() -> Mutex {
@@ -67,3 +72,30 @@ impl Mutex {
         debug_assert!(r == 0 || r == libc::EINVAL);
     }
 }
+
+#[cfg(not(feature = "thread"))]
+pub struct Mutex;
+
+#[cfg(not(feature = "thread"))]
+impl Mutex {
+    #[inline]
+    pub unsafe fn new() -> Mutex {
+        Mutex
+    }
+    #[inline]
+    pub unsafe fn lock(&self) {
+    }
+    #[inline]
+    pub unsafe fn unlock(&self) {
+    }
+    #[inline]
+    pub unsafe fn try_lock(&self) -> bool {
+        true
+    }
+    #[inline]
+    pub unsafe fn destroy(&self) {
+    }
+}
+
+#[cfg(not(feature = "thread"))]
+pub const MUTEX_INIT: Mutex = Mutex;

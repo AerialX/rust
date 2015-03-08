@@ -7,6 +7,10 @@ authors = ["The Rust Project Developers"]
 name = "std"
 path = "lib.rs"
 
+[features]
+unwind = ["rustrt_native", "backtrace", "morestack"]
+thread = []
+
 [dependencies.core]
 path = "../libcore"
 
@@ -28,14 +32,17 @@ path = "../libunicode"
 [dependencies.rustc_bitflags]
 path = "../librustc_bitflags"
 
-[dependencies.morestack]
-path = "deps/morestack"
-
 [dependencies.rust_builtin]
 path = "deps/rust_builtin"
 
+[dependencies.morestack]
+path = "deps/morestack"
+optional = true
+
 [dependencies.rustrt_native]
 path = "deps/rustrt_native"
+optional = true
 
 [dependencies.backtrace]
 path = "deps/backtrace"
+optional = true

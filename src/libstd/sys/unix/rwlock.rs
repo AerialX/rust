@@ -11,10 +11,13 @@
 use prelude::v1::*;
 
 use cell::UnsafeCell;
+#[cfg(feature = "thread")]
 use sys::sync as ffi;
 
+#[cfg(feature = "thread")]
 pub struct RWLock { inner: UnsafeCell<ffi::pthread_rwlock_t> }
 
+#[cfg(feature = "thread")]
 pub const RWLOCK_INIT: RWLock = RWLock {
     inner: UnsafeCell { value: ffi::PTHREAD_RWLOCK_INITIALIZER },
 };
@@ -22,6 +25,7 @@ pub const RWLOCK_INIT: RWLock = RWLock {
 unsafe impl Send for RWLock {}
 unsafe impl Sync for RWLock {}
 
+#[cfg(feature = "thread")]
 impl RWLock {
     #[inline]
     pub unsafe fn new() -> RWLock {
@@ -73,3 +77,39 @@ impl RWLock {
         debug_assert!(r == 0 || r == libc::EINVAL);
     }
 }
+
+#[cfg(not(feature = "thread"))]
+pub struct RWLock;
+
+#[cfg(not(feature = "thread"))]
+impl RWLock {
+    #[inline]
+    pub unsafe fn new() -> RWLock {
+        RWLock
+    }
+    #[inline]
+    pub unsafe fn read(&self) {
+    }
+    #[inline]
+    pub unsafe fn try_read(&self) -> bool {
+        true
+    }
+    #[inline]
+    pub unsafe fn write(&self) {
+    }
+    #[inline]
+    pub unsafe fn try_write(&self) -> bool {
+        true
+    }
+    #[inline]
+    pub unsafe fn read_unlock(&self) {
+    }
+    #[inline]
+    pub unsafe fn write_unlock(&self) { self.read_unlock() }
+    #[inline]
+    pub unsafe fn destroy(&self) {
+    }
+}
+
+#[cfg(not(feature = "thread"))]
+pub const RWLOCK_INIT: RWLock = RWLock;

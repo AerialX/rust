@@ -131,6 +131,7 @@ impl<A:Send+'static> Future<A> {
         })
     }
 
+    #[cfg(feature = "thread")]
     pub fn spawn<F>(blk: F) -> Future<A>
         where F : FnOnce() -> A, F : Send + 'static
     {

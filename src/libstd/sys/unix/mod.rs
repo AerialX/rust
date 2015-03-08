@@ -37,6 +37,7 @@ macro_rules! helper_init { (static $name:ident: Helper<$m:ty>) => (
     };
 ) }
 
+#[cfg(feature = "unwind")]
 pub mod backtrace;
 pub mod c;
 pub mod condvar;
@@ -54,16 +55,43 @@ pub mod pipe2;
 pub mod process;
 pub mod process2;
 pub mod rwlock;
+#[cfg(feature = "thread")]
 pub mod stack_overflow;
+#[cfg(feature = "thread")]
 pub mod sync;
 pub mod tcp;
+#[cfg(feature = "thread")]
 pub mod thread;
+#[cfg(feature = "thread")]
 pub mod thread_local;
 pub mod time;
 pub mod timer;
 pub mod tty;
 pub mod udp;
 pub mod stdio;
+
+#[cfg(not(feature = "thread"))]
+pub mod thread {
+    pub type rust_thread_return = *mut u8;
+    pub mod guard {
+        pub unsafe fn current() -> uint {
+            0
+        }
+
+        pub unsafe fn main() -> uint {
+            0
+        }
+
+        pub unsafe fn init() {
+        }
+    }
+}
+
+#[cfg(not(feature = "thread"))]
+pub mod stack_overflow {
+    pub fn init() { }
+    pub fn cleanup() { }
+}
 
 pub mod addrinfo {
     pub use sys_common::net::get_host_addresses;

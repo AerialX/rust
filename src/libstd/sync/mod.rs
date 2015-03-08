@@ -32,6 +32,7 @@ pub use self::poison::{PoisonError, TryLockError, TryLockResult, LockResult};
 
 pub use self::future::Future;
 #[allow(deprecated)]
+#[cfg(feature = "thread")]
 pub use self::task_pool::TaskPool;
 
 pub mod mpsc;
@@ -44,4 +45,5 @@ mod once;
 mod poison;
 mod rwlock;
 mod semaphore;
+#[cfg(feature = "thread")]
 mod task_pool;

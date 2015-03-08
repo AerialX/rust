@@ -248,7 +248,27 @@ pub mod num;
 /* Runtime and platform support */
 
 #[macro_use]
+#[cfg(feature = "thread")]
 pub mod thread_local;
+
+#[macro_use]
+#[cfg(not(feature = "thread"))]
+mod thread_local_dummy;
+#[cfg(not(feature = "thread"))]
+#[stable(feature = "rust1", since = "1.0.0")]
+#[doc(hidden)]
+pub mod thread_local {
+    pub use super::thread_local_dummy::*;
+}
+
+#[cfg(not(feature = "thread"))]
+mod thread_dummy;
+#[cfg(not(feature = "thread"))]
+#[stable(feature = "rust1", since = "1.0.0")]
+#[doc(hidden)]
+pub mod thread {
+    pub use super::thread_dummy::*;
+}
 
 pub mod dynamic_lib;
 pub mod ffi;
@@ -270,6 +290,7 @@ pub mod collections;
 
 /* Threads and communication */
 
+#[cfg(feature = "thread")]
 pub mod thread;
 pub mod sync;
 

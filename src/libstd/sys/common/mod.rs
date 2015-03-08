@@ -26,11 +26,37 @@ pub mod mutex;
 pub mod net;
 pub mod net2;
 pub mod rwlock;
+#[cfg(feature = "thread")]
 pub mod stack;
 pub mod thread;
 pub mod thread_info;
+#[cfg(feature = "thread")]
 pub mod thread_local;
 pub mod wtf8;
+
+#[cfg(not(feature = "thread"))]
+pub mod stack {
+    #[lang = "stack_exhausted"]
+    extern fn stack_exhausted() {
+        use intrinsics;
+
+        unsafe {
+            ::rt::util::report_overflow();
+
+            intrinsics::abort();
+        }
+    }
+
+    pub unsafe fn record_os_managed_stack_bounds(_: uint, _: uint) {
+    }
+    pub unsafe fn record_rust_managed_stack_bounds(_: uint, _: uint) {
+    }
+    pub unsafe fn record_sp_limit(limit: uint) {
+    }
+    pub unsafe fn get_sp_limit() -> uint {
+        1024
+    }
+}
 
 // common error constructors
 

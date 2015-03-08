@@ -29,6 +29,7 @@ use rt;
 use sync::{StaticMutex, StaticCondvar};
 use sync::mpsc::{channel, Sender, Receiver};
 use sys::helper_signal;
+use marker::PhantomData;
 
 use thread;
 
@@ -70,6 +71,7 @@ struct RaceBox(helper_signal::signal);
 unsafe impl Send for RaceBox {}
 unsafe impl Sync for RaceBox {}
 
+#[cfg(feature = "thread")]
 impl<M: Send> Helper<M> {
     /// Lazily boots a helper thread, becoming a no-op if the helper has already
     /// been spawned.
@@ -148,5 +150,20 @@ impl<M: Send> Helper<M> {
             helper_signal::close(*self.signal.get() as helper_signal::signal);
             *self.signal.get() = 0;
         }
+    }
+}
+
+#[cfg(not(feature = "thread"))]
+impl<M: Send> Helper<M> {
+    pub fn boot<T, F>(&'static self, _: F, helper: fn(helper_signal::signal, Receiver<M>, T)) where
+        T: Send + 'static,
+        F: FnOnce() -> T,
+    {
+    }
+
+    pub fn send(&'static self, msg: M) {
+    }
+
+    fn shutdown(&'static self) {
     }
 }

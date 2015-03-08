@@ -148,6 +148,7 @@ pub fn abort(args: fmt::Arguments) -> ! {
     unsafe { intrinsics::abort(); }
 }
 
+#[cfg(feature = "thread")]
 pub unsafe fn report_overflow() {
     use thread;
 
@@ -161,3 +162,8 @@ pub unsafe fn report_overflow() {
     rterrln!("\nthread '{}' has overflowed its stack",
              thread::current().name().unwrap_or("<unknown>"));
 }
+
+#[cfg(not(feature = "thread"))]
+pub unsafe fn report_overflow() {
+    rterrln!("\nthread has overflowed its stack");
+ }

@@ -399,3 +399,6 @@ extern {
     fn pthread_detach(thread: libc::pthread_t) -> libc::c_int;
     fn sched_yield() -> libc::c_int;
 }
+
+#[link(name = "pthread")]
+extern {}

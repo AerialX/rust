@@ -17,6 +17,7 @@ use prelude::v1::*;
 use env;
 use sync::atomic::{self, Ordering};
 
+#[cfg(feature = "unwind")]
 pub use sys::backtrace::write;
 
 // For now logging is turned off by default, and this function checks to see

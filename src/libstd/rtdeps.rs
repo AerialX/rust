@@ -24,10 +24,6 @@ extern {}
 //
 // On Linux, librt and libdl are indirect dependencies via std,
 // and binutils 2.22+ won't add them automatically
-#[cfg(target_os = "linux")]
-#[link(name = "dl")]
-#[link(name = "pthread")]
-extern {}
 
 #[cfg(target_os = "android")]
 #[link(name = "dl")]
@@ -36,13 +32,11 @@ extern {}
 
 #[cfg(target_os = "freebsd")]
 #[link(name = "execinfo")]
-#[link(name = "pthread")]
 extern {}
 
 #[cfg(any(target_os = "dragonfly",
           target_os = "bitrig",
           target_os = "openbsd"))]
-#[link(name = "pthread")]
 extern {}
 
 #[cfg(target_os = "macos")]

@@ -37,7 +37,14 @@ pub use self::unwind::{begin_unwind, begin_unwind_fmt};
 pub use alloc::heap;
 
 // Simple backtrace functionality (to print on panic)
+#[cfg(feature = "unwind")]
 pub mod backtrace;
+#[cfg(not(feature = "unwind"))]
+pub mod backtrace_dummy;
+#[cfg(not(feature = "unwind"))]
+pub mod backtrace {
+    pub use super::backtrace_dummy::*;
+}
 
 // Internals
 #[macro_use]
@@ -45,10 +52,18 @@ mod macros;
 
 // These should be refactored/moved/made private over time
 pub mod util;
-pub mod unwind;
 pub mod args;
+#[cfg(feature = "unwind")]
+pub mod unwind;
+#[cfg(not(feature = "unwind"))]
+mod unwind_dummy;
+#[cfg(not(feature = "unwind"))]
+pub mod unwind {
+    pub use super::unwind_dummy::*;
+}
 
 mod at_exit_imp;
+#[cfg(feature = "unwind")]
 mod libunwind;
 
 /// The default error code of the rust runtime if the main thread panics instead

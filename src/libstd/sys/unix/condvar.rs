@@ -15,19 +15,23 @@ use libc;
 use ptr;
 use sys::mutex::{self, Mutex};
 use sys::time;
+#[cfg(feature = "thread")]
 use sys::sync as ffi;
 use time::Duration;
 use num::{Int, NumCast};
 
+#[cfg(feature = "thread")]
 pub struct Condvar { inner: UnsafeCell<ffi::pthread_cond_t> }
 
 unsafe impl Send for Condvar {}
 unsafe impl Sync for Condvar {}
 
+#[cfg(feature = "thread")]
 pub const CONDVAR_INIT: Condvar = Condvar {
     inner: UnsafeCell { value: ffi::PTHREAD_COND_INITIALIZER },
 };
 
+#[cfg(feature = "thread")]
 impl Condvar {
     #[inline]
     pub unsafe fn new() -> Condvar {
@@ -112,5 +116,43 @@ impl Condvar {
         // ffi::PTHREAD_COND_INITIALIZER. Once it is used or
         // pthread_cond_init() is called, this behaviour no longer occurs.
         debug_assert!(r == 0 || r == libc::EINVAL);
+    }
+}
+
+#[cfg(not(feature = "thread"))]
+pub struct Condvar;
+
+#[cfg(not(feature = "thread"))]
+pub const CONDVAR_INIT: Condvar = Condvar;
+
+#[cfg(not(feature = "thread"))]
+impl Condvar {
+    #[inline]
+    pub unsafe fn new() -> Condvar {
+        Condvar
+    }
+
+    #[inline]
+    pub unsafe fn notify_one(&self) {
+    }
+
+    #[inline]
+    pub unsafe fn notify_all(&self) {
+    }
+
+    #[inline]
+    pub unsafe fn wait(&self, _: &Mutex) {
+    }
+
+    pub unsafe fn wait_timeout(&self, mutex: &Mutex, dur: Duration) -> bool {
+        if dur <= Duration::zero() {
+            return false;
+        }
+
+        true
+    }
+
+    #[inline]
+    pub unsafe fn destroy(&self) {
     }
 }

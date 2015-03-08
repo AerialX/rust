@@ -23,6 +23,7 @@ use sys::{thread, stack_overflow};
 // no_stack_check annotation), and then we extract the main function
 // and invoke it.
 #[no_stack_check]
+#[cfg(feature = "thread")]
 pub fn start_thread(main: *mut libc::c_void) -> thread::rust_thread_return {
     unsafe {
         stack::record_os_managed_stack_bounds(0, usize::MAX);
@@ -30,6 +31,15 @@ pub fn start_thread(main: *mut libc::c_void) -> thread::rust_thread_return {
         let f: Box<Thunk> = Box::from_raw(main as *mut Thunk);
         f.invoke(());
         drop(handler);
+        mem::transmute(0 as thread::rust_thread_return)
+    }
+}
+
+#[cfg(not(feature = "thread"))]
+pub fn start_thread(main: *mut libc::c_void) -> thread::rust_thread_return {
+    unsafe {
+        let f: Box<Thunk> = Box::from_raw(main as *mut Thunk);
+        f.invoke(());
         mem::transmute(0 as thread::rust_thread_return)
     }
 }

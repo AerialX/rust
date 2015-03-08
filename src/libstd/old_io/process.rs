@@ -373,6 +373,7 @@ impl Command {
     /// println!("stdout: {}", String::from_utf8_lossy(output.output.as_slice()));
     /// println!("stderr: {}", String::from_utf8_lossy(output.error.as_slice()));
     /// ```
+    #[cfg(feature = "thread")]
     pub fn output(&self) -> IoResult<ProcessOutput> {
         self.spawn().and_then(|p| p.wait_with_output())
     }
@@ -700,6 +701,7 @@ impl Process {
     ///
     /// This function can fail for any of the same reasons that `wait()` can
     /// fail.
+    #[cfg(feature = "thread")]
     pub fn wait_with_output(mut self) -> IoResult<ProcessOutput> {
         drop(self.stdin.take());
         fn read(stream: Option<old_io::PipeStream>) -> Receiver<IoResult<Vec<u8>>> {

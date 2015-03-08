@@ -279,6 +279,7 @@ impl Command {
     /// println!("stderr: {}", String::from_utf8_lossy(output.stderr.as_slice()));
     /// ```
     #[stable(feature = "process", since = "1.0.0")]
+    #[cfg(feature = "thread")]
     pub fn output(&mut self) -> io::Result<Output> {
         self.spawn_inner(StdioImp::Piped).and_then(|p| p.wait_with_output())
     }
@@ -498,6 +499,7 @@ impl Child {
     /// child does not block waiting for input from the parent, while
     /// the parent waits for the child to exit.
     #[stable(feature = "process", since = "1.0.0")]
+    #[cfg(feature = "thread")]
     pub fn wait_with_output(mut self) -> io::Result<Output> {
         drop(self.stdin.take());
         fn read<T: Read + Send + 'static>(stream: Option<T>) -> Receiver<io::Result<Vec<u8>>> {
