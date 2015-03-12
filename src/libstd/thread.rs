@@ -284,7 +284,7 @@ impl Builder {
                 stack::record_os_managed_stack_bounds(my_stack_bottom, my_stack_top);
             }
             match their_thread.name() {
-                Some(name) => unsafe { imp::set_name(name.as_slice()); },
+                Some(name) => unsafe { imp::set_name(name); },
                 None => {}
             }
             thread_info::set(
@@ -635,7 +635,7 @@ impl Drop for JoinHandle {
 /// Due to platform restrictions, it is not possible to `Clone` this
 /// handle: the ability to join a child thread is a uniquely-owned
 /// permission.
-#[must_use]
+#[must_use = "thread will be immediately joined if `JoinGuard` is not used"]
 #[stable(feature = "rust1", since = "1.0.0")]
 pub struct JoinGuard<'a, T: 'a> {
     inner: JoinInner<T>,

@@ -35,7 +35,7 @@ use thread;
 /// process is created via the `Command` struct, which configures the spawning
 /// process and can itself be constructed using a builder-style interface.
 ///
-/// # Example
+/// # Examples
 ///
 /// ```should_fail
 /// # #![feature(process)]
@@ -264,7 +264,7 @@ impl Command {
     /// By default, stdin, stdout and stderr are captured (and used to
     /// provide the resulting output).
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// # #![feature(process)]
@@ -275,8 +275,8 @@ impl Command {
     /// });
     ///
     /// println!("status: {}", output.status);
-    /// println!("stdout: {}", String::from_utf8_lossy(output.stdout.as_slice()));
-    /// println!("stderr: {}", String::from_utf8_lossy(output.stderr.as_slice()));
+    /// println!("stdout: {}", String::from_utf8_lossy(&output.stdout));
+    /// println!("stderr: {}", String::from_utf8_lossy(&output.stderr));
     /// ```
     #[stable(feature = "process", since = "1.0.0")]
     #[cfg(feature = "thread")]
@@ -289,7 +289,7 @@ impl Command {
     ///
     /// By default, stdin, stdout and stderr are inherited by the parent.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
     /// # #![feature(process)]
@@ -814,7 +814,7 @@ mod tests {
         for (ref k, ref v) in env::vars() {
             // don't check windows magical empty-named variables
             assert!(k.is_empty() ||
-                    output.contains(format!("{}={}", *k, *v).as_slice()),
+                    output.contains(&format!("{}={}", *k, *v)),
                     "output doesn't contain `{}={}`\n{}",
                     k, v, output);
         }
@@ -832,12 +832,12 @@ mod tests {
         for &(ref k, ref v) in &r {
             // don't check android RANDOM variables
             if *k != "RANDOM".to_string() {
-                assert!(output.contains(format!("{}={}",
-                                                *k,
-                                                *v).as_slice()) ||
-                        output.contains(format!("{}=\'{}\'",
-                                                *k,
-                                                *v).as_slice()));
+                assert!(output.contains(&format!("{}={}",
+                                                 *k,
+                                                 *v)) ||
+                        output.contains(&format!("{}=\'{}\'",
+                                                 *k,
+                                                 *v)));
             }
         }
     }

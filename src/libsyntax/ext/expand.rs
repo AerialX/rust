@@ -1121,7 +1121,7 @@ fn expand_annotatable(a: Annotatable,
                         callee: NameAndSpan {
                             name: mname.to_string(),
                             format: MacroAttribute,
-                            span: None,
+                            span: Some(attr.span),
                             // attributes can do whatever they like,
                             // for now.
                             allow_internal_unstable: true,
@@ -1656,7 +1656,7 @@ mod test {
     }
 
     // make sure that macros can't escape fns
-    #[should_fail]
+    #[should_panic]
     #[test] fn macros_cant_escape_fns_test () {
         let src = "fn bogus() {macro_rules! z (() => (3+4));}\
                    fn inty() -> i32 { z!() }".to_string();
@@ -1670,7 +1670,7 @@ mod test {
     }
 
     // make sure that macros can't escape modules
-    #[should_fail]
+    #[should_panic]
     #[test] fn macros_cant_escape_mods_test () {
         let src = "mod foo {macro_rules! z (() => (3+4));}\
                    fn inty() -> i32 { z!() }".to_string();

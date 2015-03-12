@@ -979,7 +979,7 @@ fn convert_item(ccx: &CrateCtxt, it: &ast::Item) {
                                                            None,
                                                            None);
 
-            ty::record_default_trait_implementation(tcx, trait_ref.def_id, local_def(it.id))
+            ty::record_trait_has_default_impl(tcx, trait_ref.def_id);
         }
         ast::ItemImpl(_, _,
                       ref generics,
@@ -1590,8 +1590,8 @@ fn compute_type_scheme_of_item<'a,'tcx>(ccx: &CrateCtxt<'a,'tcx>,
         ast::ItemMac(..) => {
             tcx.sess.span_bug(
                 it.span,
-                format!("compute_type_scheme_of_item: unexpected item type: {:?}",
-                        it.node).as_slice());
+                &format!("compute_type_scheme_of_item: unexpected item type: {:?}",
+                         it.node));
         }
     }
 }

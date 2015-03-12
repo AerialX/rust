@@ -19,7 +19,6 @@
 #![feature(unboxed_closures)]
 #![feature(std_misc)]
 #![feature(test)]
-#![feature(unicode)]
 #![feature(core)]
 #![feature(path)]
 #![feature(io)]
@@ -332,7 +331,7 @@ pub fn make_test<F>(config: &Config, testfile: &Path, f: F) -> test::TestDescAnd
         desc: test::TestDesc {
             name: make_test_name(config, testfile),
             ignore: header::is_test_ignored(config, testfile),
-            should_fail: test::ShouldFail::No,
+            should_panic: test::ShouldPanic::No,
         },
         testfn: f(),
     }

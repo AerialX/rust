@@ -36,7 +36,7 @@ mod tempdir;
 /// it was opened with. Files also implement `Seek` to alter the logical cursor
 /// that the file contains internally.
 ///
-/// # Example
+/// # Examples
 ///
 /// ```no_run
 /// use std::io::prelude::*;
@@ -392,7 +392,7 @@ impl DirEntry {
 
 /// Remove a file from the underlying filesystem.
 ///
-/// # Example
+/// # Examples
 ///
 /// ```rust,no_run
 /// use std::fs;
@@ -420,7 +420,7 @@ pub fn remove_file<P: AsPath + ?Sized>(path: &P) -> io::Result<()> {
 /// This function will traverse soft links to query information about the
 /// destination file.
 ///
-/// # Example
+/// # Examples
 ///
 /// ```rust,no_run
 /// # fn foo() -> std::io::Result<()> {
@@ -444,7 +444,7 @@ pub fn metadata<P: AsPath + ?Sized>(path: &P) -> io::Result<Metadata> {
 
 /// Rename a file or directory to a new name.
 ///
-/// # Example
+/// # Examples
 ///
 /// ```rust,no_run
 /// use std::fs;
@@ -472,7 +472,7 @@ pub fn rename<P: AsPath + ?Sized, Q: AsPath + ?Sized>(from: &P, to: &Q)
 /// Note that if `from` and `to` both point to the same file, then the file
 /// will likely get truncated by this operation.
 ///
-/// # Example
+/// # Examples
 ///
 /// ```rust
 /// use std::fs;
@@ -541,7 +541,7 @@ pub fn read_link<P: AsPath + ?Sized>(path: &P) -> io::Result<PathBuf> {
 
 /// Create a new, empty directory at the provided path
 ///
-/// # Example
+/// # Examples
 ///
 /// ```rust
 /// use std::fs;
@@ -587,7 +587,7 @@ pub fn create_dir_all<P: AsPath + ?Sized>(path: &P) -> io::Result<()> {
 
 /// Remove an existing, empty directory
 ///
-/// # Example
+/// # Examples
 ///
 /// ```rust
 /// use std::fs;
@@ -638,7 +638,7 @@ pub fn remove_dir_all<P: AsPath + ?Sized>(path: &P) -> io::Result<()> {
 /// The iterator will yield instances of `io::Result<DirEntry>`. New errors may
 /// be encountered after an iterator is initially constructed.
 ///
-/// # Example
+/// # Examples
 ///
 /// ```rust
 /// use std::io;
@@ -776,7 +776,7 @@ pub fn set_file_times<P: AsPath + ?Sized>(path: &P, accessed: u64,
 
 /// Changes the permissions found on a file or a directory.
 ///
-/// # Example
+/// # Examples
 ///
 /// ```
 /// # fn foo() -> std::io::Result<()> {
@@ -828,7 +828,7 @@ mod tests {
     macro_rules! error { ($e:expr, $s:expr) => (
         match $e {
             Ok(_) => panic!("Unexpected success. Should've been: {:?}", $s),
-            Err(ref err) => assert!(err.to_string().contains($s.as_slice()),
+            Err(ref err) => assert!(err.to_string().contains($s),
                                     format!("`{}` did not contain `{}`", err, $s))
         }
     ) }
@@ -880,7 +880,7 @@ mod tests {
                 -1|0 => panic!("shouldn't happen"),
                 n => str::from_utf8(&read_buf[..n]).unwrap().to_string()
             };
-            assert_eq!(read_str.as_slice(), message);
+            assert_eq!(read_str, message);
         }
         check!(fs::remove_file(filename));
     }
@@ -1107,7 +1107,7 @@ mod tests {
                 check!(check!(File::open(&f)).read(&mut mem));
                 let read_str = str::from_utf8(&mem).unwrap();
                 let expected = format!("{}{}", prefix, n.to_str().unwrap());
-                assert_eq!(expected.as_slice(), read_str);
+                assert_eq!(expected, read_str);
             }
             check!(fs::remove_file(&f));
         }
