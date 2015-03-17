@@ -492,60 +492,6 @@ extern "rust-intrinsic" {
     /// Reverses the bytes in a `u64`.
     pub fn bswap64(x: u64) -> u64;
 
-    /// Performs checked `i8` addition.
-    pub fn i8_add_with_overflow(x: i8, y: i8) -> (i8, bool);
-    /// Performs checked `i16` addition.
-    pub fn i16_add_with_overflow(x: i16, y: i16) -> (i16, bool);
-    /// Performs checked `i32` addition.
-    pub fn i32_add_with_overflow(x: i32, y: i32) -> (i32, bool);
-    /// Performs checked `i64` addition.
-    pub fn i64_add_with_overflow(x: i64, y: i64) -> (i64, bool);
-
-    /// Performs checked `u8` addition.
-    pub fn u8_add_with_overflow(x: u8, y: u8) -> (u8, bool);
-    /// Performs checked `u16` addition.
-    pub fn u16_add_with_overflow(x: u16, y: u16) -> (u16, bool);
-    /// Performs checked `u32` addition.
-    pub fn u32_add_with_overflow(x: u32, y: u32) -> (u32, bool);
-    /// Performs checked `u64` addition.
-    pub fn u64_add_with_overflow(x: u64, y: u64) -> (u64, bool);
-
-    /// Performs checked `i8` subtraction.
-    pub fn i8_sub_with_overflow(x: i8, y: i8) -> (i8, bool);
-    /// Performs checked `i16` subtraction.
-    pub fn i16_sub_with_overflow(x: i16, y: i16) -> (i16, bool);
-    /// Performs checked `i32` subtraction.
-    pub fn i32_sub_with_overflow(x: i32, y: i32) -> (i32, bool);
-    /// Performs checked `i64` subtraction.
-    pub fn i64_sub_with_overflow(x: i64, y: i64) -> (i64, bool);
-
-    /// Performs checked `u8` subtraction.
-    pub fn u8_sub_with_overflow(x: u8, y: u8) -> (u8, bool);
-    /// Performs checked `u16` subtraction.
-    pub fn u16_sub_with_overflow(x: u16, y: u16) -> (u16, bool);
-    /// Performs checked `u32` subtraction.
-    pub fn u32_sub_with_overflow(x: u32, y: u32) -> (u32, bool);
-    /// Performs checked `u64` subtraction.
-    pub fn u64_sub_with_overflow(x: u64, y: u64) -> (u64, bool);
-
-    /// Performs checked `i8` multiplication.
-    pub fn i8_mul_with_overflow(x: i8, y: i8) -> (i8, bool);
-    /// Performs checked `i16` multiplication.
-    pub fn i16_mul_with_overflow(x: i16, y: i16) -> (i16, bool);
-    /// Performs checked `i32` multiplication.
-    pub fn i32_mul_with_overflow(x: i32, y: i32) -> (i32, bool);
-    /// Performs checked `i64` multiplication.
-    pub fn i64_mul_with_overflow(x: i64, y: i64) -> (i64, bool);
-
-    /// Performs checked `u8` multiplication.
-    pub fn u8_mul_with_overflow(x: u8, y: u8) -> (u8, bool);
-    /// Performs checked `u16` multiplication.
-    pub fn u16_mul_with_overflow(x: u16, y: u16) -> (u16, bool);
-    /// Performs checked `u32` multiplication.
-    pub fn u32_mul_with_overflow(x: u32, y: u32) -> (u32, bool);
-    /// Performs checked `u64` multiplication.
-    pub fn u64_mul_with_overflow(x: u64, y: u64) -> (u64, bool);
-
     /// Returns (a + b) mod 2^N, where N is the width of N in bits.
     pub fn overflowing_add<T>(a: T, b: T) -> T;
     /// Returns (a - b) mod 2^N, where N is the width of N in bits.
@@ -553,3 +499,79 @@ extern "rust-intrinsic" {
     /// Returns (a * b) mod 2^N, where N is the width of N in bits.
     pub fn overflowing_mul<T>(a: T, b: T) -> T;
 }
+
+macro_rules! add_with_overflow {
+    ($ty:ty, $id:ident) => (
+        pub unsafe fn $id (x: $ty,
+                           y: $ty) -> ($ty,
+                                       bool) {
+            let result = x + y;
+            (result, if y > 0 {
+                    result < x
+                } else if y == 0 {
+                    false
+                } else {
+                    result > x
+                })
+        }
+    )
+}
+macro_rules! sub_with_overflow {
+    ($ty:ty, $id:ident) => (
+        pub unsafe fn $id (x: $ty,
+                           y: $ty) -> ($ty,
+                                       bool) {
+            let result = x - y;
+            (result, if y > 0 {
+                    result > x
+                } else if y == 0 {
+                    false
+                } else {
+                    result < x
+                })
+        }
+    )
+}
+macro_rules! mul_with_overflow {
+    ($ty:ty, $id:ident) => (
+        pub unsafe fn $id (x: $ty,
+                           y: $ty) -> ($ty,
+                                       bool) {
+            let result = x * y;
+            (result, if y > 0 {
+                    result < x
+                } else if y == 0 {
+                    false
+                } else {
+                    result > x
+                })
+        }
+    )
+}
+
+add_with_overflow!{i8,  i8_add_with_overflow }
+add_with_overflow!{i16, i16_add_with_overflow}
+add_with_overflow!{i32, i32_add_with_overflow}
+add_with_overflow!{i64, i64_add_with_overflow}
+add_with_overflow!{u8,  u8_add_with_overflow }
+add_with_overflow!{u16, u16_add_with_overflow}
+add_with_overflow!{u32, u32_add_with_overflow}
+add_with_overflow!{u64, u64_add_with_overflow}
+
+sub_with_overflow!{i8,  i8_sub_with_overflow }
+sub_with_overflow!{i16, i16_sub_with_overflow}
+sub_with_overflow!{i32, i32_sub_with_overflow}
+sub_with_overflow!{i64, i64_sub_with_overflow}
+sub_with_overflow!{u8,  u8_sub_with_overflow }
+sub_with_overflow!{u16, u16_sub_with_overflow}
+sub_with_overflow!{u32, u32_sub_with_overflow}
+sub_with_overflow!{u64, u64_sub_with_overflow}
+
+mul_with_overflow!{i8,  i8_mul_with_overflow }
+mul_with_overflow!{i16, i16_mul_with_overflow}
+mul_with_overflow!{i32, i32_mul_with_overflow}
+mul_with_overflow!{i64, i64_mul_with_overflow}
+mul_with_overflow!{u8,  u8_mul_with_overflow }
+mul_with_overflow!{u16, u16_mul_with_overflow}
+mul_with_overflow!{u32, u32_mul_with_overflow}
+mul_with_overflow!{u64, u64_mul_with_overflow}
