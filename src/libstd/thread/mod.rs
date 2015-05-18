@@ -195,10 +195,10 @@ use cell::UnsafeCell;
 use fmt;
 use io;
 use marker::PhantomData;
-use rt::{self, unwind};
-use sync::{Mutex, Condvar, Arc};
+use rt::unwind;
+use sync::Arc;
 use sys::thread as imp;
-use sys_common::{stack, thread_info};
+use sys_common::thread_info;
 use time::Duration;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -310,51 +310,9 @@ impl Builder {
     // NB: this function is unsafe as the lifetime parameter of the code to run
     //     in the new thread is not tied into the return value, and the return
     //     value must not outlast that lifetime.
-    unsafe fn spawn_inner<'a, T: Send>(self, f: Box<FnBox() -> T + Send + 'a>)
+    unsafe fn spawn_inner<'a, T: Send>(self, _f: Box<FnBox() -> T + Send + 'a>)
                                        -> io::Result<JoinInner<T>> {
-        let Builder { name, stack_size } = self;
-
-        let stack_size = stack_size.unwrap_or(rt::min_stack());
-
-        let my_thread = Thread::new(name);
-        let their_thread = my_thread.clone();
-
-        let my_packet = Arc::new(UnsafeCell::new(None));
-        let their_packet = my_packet.clone();
-
-        // Spawning a new OS thread guarantees that __morestack will never get
-        // triggered, but we must manually set up the actual stack bounds once
-        // this function starts executing. This raises the lower limit by a bit
-        // because by the time that this function is executing we've already
-        // consumed at least a little bit of stack (we don't know the exact byte
-        // address at which our stack started).
-        let main = move || {
-            let something_around_the_top_of_the_stack = 1;
-            let addr = &something_around_the_top_of_the_stack as *const i32;
-            let my_stack_top = addr as usize;
-            let my_stack_bottom = my_stack_top - stack_size + 1024;
-            stack::record_os_managed_stack_bounds(my_stack_bottom, my_stack_top);
-
-            if let Some(name) = their_thread.name() {
-                imp::Thread::set_name(name);
-            }
-            thread_info::set(imp::guard::current(), their_thread);
-
-            let mut output = None;
-            let try_result = {
-                let ptr = &mut output;
-                unwind::try(move || *ptr = Some(f()))
-            };
-            *their_packet.get() = Some(try_result.map(|()| {
-                output.unwrap()
-            }));
-        };
-
-        Ok(JoinInner {
-            native: Some(try!(imp::Thread::new(stack_size, Box::new(main)))),
-            thread: my_thread,
-            packet: Packet(my_packet),
-        })
+        unimplemented!()
     }
 }
 
@@ -496,12 +454,6 @@ pub fn sleep_ms(ms: u32) {
 // or futuxes, and in either case may allow spurious wakeups.
 #[stable(feature = "rust1", since = "1.0.0")]
 pub fn park() {
-    let thread = current();
-    let mut guard = thread.inner.lock.lock().unwrap();
-    while !*guard {
-        guard = thread.inner.cvar.wait(guard).unwrap();
-    }
-    *guard = false;
 }
 
 /// Blocks unless or until the current thread's token is made available or
@@ -515,44 +467,22 @@ pub fn park() {
 ///
 /// See the module doc for more detail.
 #[stable(feature = "rust1", since = "1.0.0")]
-pub fn park_timeout_ms(ms: u32) {
-    let thread = current();
-    let mut guard = thread.inner.lock.lock().unwrap();
-    if !*guard {
-        let (g, _) = thread.inner.cvar.wait_timeout_ms(guard, ms).unwrap();
-        guard = g;
-    }
-    *guard = false;
+pub fn park_timeout_ms(_ms: u32) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // Thread
 ////////////////////////////////////////////////////////////////////////////////
 
-/// The internal representation of a `Thread` handle
-struct Inner {
-    name: Option<String>,
-    lock: Mutex<bool>,          // true when there is a buffered unpark
-    cvar: Condvar,
-}
-
 #[derive(Clone)]
 #[stable(feature = "rust1", since = "1.0.0")]
 /// A handle to a thread.
-pub struct Thread {
-    inner: Arc<Inner>,
-}
+pub struct Thread;
 
 impl Thread {
     // Used only internally to construct a thread object without spawning
-    fn new(name: Option<String>) -> Thread {
-        Thread {
-            inner: Arc::new(Inner {
-                name: name,
-                lock: Mutex::new(false),
-                cvar: Condvar::new(),
-            })
-        }
+    fn new(_name: Option<String>) -> Thread {
+        Thread
     }
 
     /// Atomically makes the handle's token available if it is not already.
@@ -560,17 +490,12 @@ impl Thread {
     /// See the module doc for more detail.
     #[stable(feature = "rust1", since = "1.0.0")]
     pub fn unpark(&self) {
-        let mut guard = self.inner.lock.lock().unwrap();
-        if !*guard {
-            *guard = true;
-            self.inner.cvar.notify_one();
-        }
     }
 
     /// Gets the thread's name.
     #[stable(feature = "rust1", since = "1.0.0")]
     pub fn name(&self) -> Option<&str> {
-        self.inner.name.as_ref().map(|s| &**s)
+        Some("main")
     }
 }
 

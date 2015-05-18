@@ -47,7 +47,6 @@ use prelude::v1::*;
 #[doc(hidden)]
 pub mod __impl {
     pub use super::imp::KeyInner;
-    pub use sys_common::thread_local::INIT as OS_INIT;
 }
 
 /// Type representing a thread local storage key corresponding to a reference
@@ -225,11 +224,6 @@ impl<T> ScopedKey<T> {
     }
 }
 
-#[cfg(not(any(windows,
-              target_os = "android",
-              target_os = "ios",
-              target_os = "openbsd",
-              target_arch = "aarch64")))]
 mod imp {
     use std::cell::UnsafeCell;
 
@@ -246,34 +240,6 @@ mod imp {
         pub unsafe fn get(&self) -> *mut T { *self.inner.get() }
     }
 }
-
-#[cfg(any(windows,
-          target_os = "android",
-          target_os = "ios",
-          target_os = "openbsd",
-          target_arch = "aarch64"))]
-mod imp {
-    use marker;
-    use std::cell::Cell;
-    use sys_common::thread_local::StaticKey as OsStaticKey;
-
-    #[doc(hidden)]
-    pub struct KeyInner<T> {
-        pub inner: OsStaticKey,
-        pub marker: marker::PhantomData<Cell<T>>,
-    }
-
-    unsafe impl<T> ::marker::Sync for KeyInner<T> { }
-
-    #[doc(hidden)]
-    impl<T> KeyInner<T> {
-        #[doc(hidden)]
-        pub unsafe fn set(&self, ptr: *mut T) { self.inner.set(ptr as *mut _) }
-        #[doc(hidden)]
-        pub unsafe fn get(&self) -> *mut T { self.inner.get() as *mut _ }
-    }
-}
-
 
 #[cfg(test)]
 mod tests {

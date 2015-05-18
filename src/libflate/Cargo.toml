@@ -1,0 +1,17 @@
+[package]
+name = "flate"
+version = "1.0.0"
+authors = ["The Rust Project Developers"]
+
+[lib]
+name = "flate"
+path = "lib.rs"
+
+[dependencies.std]
+path = "../libstd"
+
+[dependencies.libc]
+path = "../liblibc"
+
+[dependencies.miniz]
+path = "miniz"

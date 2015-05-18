@@ -1,0 +1,16 @@
+[package]
+name = "std_group"
+version = "1.0.0"
+authors = ["The Rust Project Developers"]
+
+[lib]
+name = "std_group"
+path = "src/libstd/deps/dummy.rs"
+
+[dependencies.std]
+path = "src/libstd"
+# features = ["thread", "unwind"]
+
+[dependencies.flate]
+path = "src/libflate"
+optional = true

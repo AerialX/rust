@@ -1,0 +1,48 @@
+[package]
+name = "std"
+version = "1.0.0"
+authors = ["The Rust Project Developers"]
+
+[lib]
+name = "std"
+path = "lib.rs"
+
+[features]
+unwind = ["rustrt_native", "backtrace", "morestack"]
+thread = []
+
+[dependencies.core]
+path = "../libcore"
+
+[dependencies.libc]
+path = "../liblibc"
+
+[dependencies.alloc]
+path = "../liballoc"
+
+[dependencies.rand]
+path = "../librand"
+
+[dependencies.collections]
+path = "../libcollections"
+
+[dependencies.rustc_unicode]
+path = "../librustc_unicode"
+
+[dependencies.rustc_bitflags]
+path = "../librustc_bitflags"
+
+[dependencies.rust_builtin]
+path = "deps/rust_builtin"
+
+[dependencies.morestack]
+path = "deps/morestack"
+optional = true
+
+[dependencies.rustrt_native]
+path = "deps/rustrt_native"
+optional = true
+
+[dependencies.backtrace]
+path = "deps/backtrace"
+optional = true

@@ -526,3 +526,12 @@ pub fn canonicalize(p: &Path) -> io::Result<PathBuf> {
     buf.truncate(p);
     Ok(PathBuf::from(OsString::from_vec(buf)))
 }
+
+#[no_mangle]
+pub extern fn rust_dirent_t_size() -> c_int { 0 }
+#[no_mangle]
+pub extern fn rust_list_dir_val(ptr: *mut libc::dirent_t) -> *const c_char { 0 as *const _ }
+#[no_mangle]
+pub extern fn rust_dir_get_ino(ptr: *mut libc::dirent_t) -> raw::ino_t { 0 }
+#[no_mangle]
+pub extern fn rust_dir_get_mode(ptr: *mut libc::dirent_t) -> c_int { 0 }
