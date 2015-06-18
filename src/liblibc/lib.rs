@@ -18,7 +18,7 @@
 #![cfg_attr(not(feature = "cargo-build"), staged_api)]
 #![cfg_attr(not(feature = "cargo-build"), no_std)]
 #![doc(html_logo_url = "http://www.rust-lang.org/logos/rust-logo-128x128-blk-v2.png",
-       html_favicon_url = "http://www.rust-lang.org/favicon.ico",
+       html_favicon_url = "https://doc.rust-lang.org/favicon.ico",
        html_root_url = "http://doc.rust-lang.org/nightly/",
        html_playground_url = "http://play.rust-lang.org/")]
 #![cfg_attr(test, feature(test))]
@@ -5722,6 +5722,9 @@ pub mod funcs {
                 pub fn tcgetpgrp(fd: c_int) -> pid_t;
                 pub fn ttyname(fd: c_int) -> *mut c_char;
                 pub fn unlink(c: *const c_char) -> c_int;
+                pub fn wait(status: *const c_int) -> pid_t;
+                pub fn waitpid(pid: pid_t, status: *const c_int, options: c_int)
+                               -> pid_t;
                 pub fn write(fd: c_int, buf: *const c_void, count: size_t)
                              -> ssize_t;
                 pub fn pread(fd: c_int, buf: *mut c_void, count: size_t,
@@ -5773,6 +5776,9 @@ pub mod funcs {
                 pub fn sysconf(name: c_int) -> c_long;
                 pub fn ttyname(fd: c_int) -> *mut c_char;
                 pub fn unlink(c: *const c_char) -> c_int;
+                pub fn wait(status: *const c_int) -> pid_t;
+                pub fn waitpid(pid: pid_t, status: *const c_int, options: c_int)
+                               -> pid_t;
                 pub fn write(fd: c_int, buf: *const c_void, count: size_t)
                              -> ssize_t;
                 pub fn pread(fd: c_int, buf: *mut c_void, count: size_t,

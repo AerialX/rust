@@ -9,9 +9,9 @@
 // except according to those terms.
 
 use ast;
-use ast::{MetaItem, Item, Expr,};
+use ast::{MetaItem, Expr,};
 use codemap::Span;
-use ext::base::ExtCtxt;
+use ext::base::{ExtCtxt, Annotatable};
 use ext::build::AstBuilder;
 use ext::deriving::generic::*;
 use ext::deriving::generic::ty::*;
@@ -21,8 +21,8 @@ use ptr::P;
 pub fn expand_deriving_show(cx: &mut ExtCtxt,
                             span: Span,
                             mitem: &MetaItem,
-                            item: &Item,
-                            push: &mut FnMut(P<Item>))
+                            item: Annotatable,
+                            push: &mut FnMut(Annotatable))
 {
     // &mut ::std::fmt::Formatter
     let fmtr = Ptr(Box::new(Literal(path_std!(cx, core::fmt::Formatter))),
@@ -42,6 +42,7 @@ pub fn expand_deriving_show(cx: &mut ExtCtxt,
                 args: vec!(fmtr),
                 ret_ty: Literal(path_std!(cx, core::fmt::Result)),
                 attributes: Vec::new(),
+                is_unsafe: false,
                 combine_substructure: combine_substructure(Box::new(|a, b, c| {
                     show_substructure(a, b, c)
                 }))
@@ -49,7 +50,7 @@ pub fn expand_deriving_show(cx: &mut ExtCtxt,
         ],
         associated_types: Vec::new(),
     };
-    trait_def.expand(cx, mitem, item, push)
+    trait_def.expand(cx, mitem, &item, push)
 }
 
 /// We use the debug builders to do the heavy lifting here

@@ -181,6 +181,8 @@ match version {
 This function makes use of an enum, `ParseError`, to enumerate the various
 errors that can occur.
 
+The [`Debug`](../std/fmt/trait.Debug.html) trait is what lets us print the enum value using the `{:?}` format operation.
+
 # Non-recoverable errors with `panic!`
 
 In the case of an error that is unexpected and not recoverable, the `panic!`
@@ -204,7 +206,7 @@ Because these kinds of situations are relatively rare, use panics sparingly.
 
 In certain circumstances, even though a function may fail, we may want to treat
 it as a panic instead. For example, `io::stdin().read_line(&mut buffer)` returns
-an `Result<usize>`, when there is an error reading the line. This allows us to
+a `Result<usize>`, when there is an error reading the line. This allows us to
 handle and possibly recover from error.
 
 If we don't want to handle this error, and would rather just abort the program,
