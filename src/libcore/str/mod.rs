@@ -638,10 +638,10 @@ impl<'a, P: Pattern<'a>> SplitInternal<'a, P> {
 
 generate_pattern_iterators! {
     forward:
-        /// Created with the method `.split()`.
+        #[doc="Created with the method `.split()`."]
         struct Split;
     reverse:
-        /// Created with the method `.rsplit()`.
+        #[doc="Created with the method `.rsplit()`."]
         struct RSplit;
     stability:
         #[stable(feature = "rust1", since = "1.0.0")]
@@ -652,10 +652,10 @@ generate_pattern_iterators! {
 
 generate_pattern_iterators! {
     forward:
-        /// Created with the method `.split_terminator()`.
+        #[doc="Created with the method `.split_terminator()`."]
         struct SplitTerminator;
     reverse:
-        /// Created with the method `.rsplit_terminator()`.
+        #[doc="Created with the method `.rsplit_terminator()`."]
         struct RSplitTerminator;
     stability:
         #[stable(feature = "rust1", since = "1.0.0")]
@@ -698,10 +698,10 @@ impl<'a, P: Pattern<'a>> SplitNInternal<'a, P> {
 
 generate_pattern_iterators! {
     forward:
-        /// Created with the method `.splitn()`.
+        #[doc="Created with the method `.splitn()`."]
         struct SplitN;
     reverse:
-        /// Created with the method `.rsplitn()`.
+        #[doc="Created with the method `.rsplitn()`."]
         struct RSplitN;
     stability:
         #[stable(feature = "rust1", since = "1.0.0")]
@@ -732,10 +732,10 @@ impl<'a, P: Pattern<'a>> MatchIndicesInternal<'a, P> {
 
 generate_pattern_iterators! {
     forward:
-        /// Created with the method `.match_indices()`.
+        #[doc="Created with the method `.match_indices()`."]
         struct MatchIndices;
     reverse:
-        /// Created with the method `.rmatch_indices()`.
+        #[doc="Created with the method `.rmatch_indices()`."]
         struct RMatchIndices;
     stability:
         #[unstable(feature = "core",
@@ -773,10 +773,10 @@ impl<'a, P: Pattern<'a>> MatchesInternal<'a, P> {
 
 generate_pattern_iterators! {
     forward:
-        /// Created with the method `.matches()`.
+        #[doc="Created with the method `.matches()`."]
         struct Matches;
     reverse:
-        /// Created with the method `.rmatches()`.
+        #[doc="Created with the method `.rmatches()`."]
         struct RMatches;
     stability:
         #[unstable(feature = "core", reason = "type got recently added")]
@@ -1517,6 +1517,7 @@ pub trait StrExt {
     fn rfind<'a, P: Pattern<'a>>(&'a self, pat: P) -> Option<usize>
         where P::Searcher: ReverseSearcher<'a>;
     fn find_str<'a, P: Pattern<'a>>(&'a self, pat: P) -> Option<usize>;
+    fn split_at(&self, mid: usize) -> (&str, &str);
     fn slice_shift_char<'a>(&'a self) -> Option<(char, &'a str)>;
     fn subslice_offset(&self, inner: &str) -> usize;
     fn as_ptr(&self) -> *const u8;
@@ -1807,6 +1808,18 @@ impl StrExt for str {
 
     fn find_str<'a, P: Pattern<'a>>(&'a self, pat: P) -> Option<usize> {
         self.find(pat)
+    }
+
+    fn split_at(&self, mid: usize) -> (&str, &str) {
+        // is_char_boundary checks that the index is in [0, .len()]
+        if self.is_char_boundary(mid) {
+            unsafe {
+                (self.slice_unchecked(0, mid),
+                 self.slice_unchecked(mid, self.len()))
+            }
+        } else {
+            slice_error_fail(self, 0, mid)
+        }
     }
 
     #[inline]

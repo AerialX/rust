@@ -77,7 +77,7 @@ This API is completely unstable and subject to change.
 
 #![feature(box_patterns)]
 #![feature(box_syntax)]
-#![feature(collections)]
+#![feature(collections, collections_drain)]
 #![feature(core)]
 #![feature(quote)]
 #![feature(rustc_diagnostic_macros)]
@@ -101,6 +101,7 @@ use middle::def;
 use middle::infer;
 use middle::subst;
 use middle::ty::{self, Ty};
+use rustc::ast_map;
 use session::config;
 use util::common::time;
 use util::ppaux::Repr;
@@ -108,7 +109,7 @@ use util::ppaux;
 
 use syntax::codemap::Span;
 use syntax::print::pprust::*;
-use syntax::{ast, ast_map, abi};
+use syntax::{ast, abi};
 use syntax::ast_util::local_def;
 
 use std::cell::RefCell;
@@ -117,13 +118,13 @@ use std::cell::RefCell;
 // registered before they are used.
 pub mod diagnostics;
 
-mod check;
+pub mod check;
 mod rscope;
 mod astconv;
-mod collect;
+pub mod collect;
 mod constrained_type_params;
-mod coherence;
-mod variance;
+pub mod coherence;
+pub mod variance;
 
 pub struct TypeAndSubsts<'tcx> {
     pub substs: subst::Substs<'tcx>,
@@ -132,13 +133,13 @@ pub struct TypeAndSubsts<'tcx> {
 
 pub struct CrateCtxt<'a, 'tcx: 'a> {
     // A mapping from method call sites to traits that have that method.
-    trait_map: ty::TraitMap,
+    pub trait_map: ty::TraitMap,
     /// A vector of every trait accessible in the whole crate
     /// (i.e. including those from subcrates). This is used only for
     /// error reporting, and so is lazily initialised and generally
     /// shouldn't taint the common path (hence the RefCell).
-    all_traits: RefCell<Option<check::method::AllTraitsVec>>,
-    tcx: &'a ty::ctxt<'tcx>,
+    pub all_traits: RefCell<Option<check::method::AllTraitsVec>>,
+    pub tcx: &'a ty::ctxt<'tcx>,
 }
 
 // Functions that write types into the node type table
@@ -211,11 +212,11 @@ fn check_main_fn_ty(ccx: &CrateCtxt,
     let tcx = ccx.tcx;
     let main_t = ty::node_id_to_type(tcx, main_id);
     match main_t.sty {
-        ty::ty_bare_fn(..) => {
+        ty::TyBareFn(..) => {
             match tcx.map.find(main_id) {
                 Some(ast_map::NodeItem(it)) => {
                     match it.node {
-                        ast::ItemFn(_, _, _, ref ps, _)
+                        ast::ItemFn(_, _, _, _, ref ps, _)
                         if ps.is_parameterized() => {
                             span_err!(ccx.tcx.sess, main_span, E0131,
                                       "main function is not allowed to have type parameters");
@@ -258,11 +259,11 @@ fn check_start_fn_ty(ccx: &CrateCtxt,
     let tcx = ccx.tcx;
     let start_t = ty::node_id_to_type(tcx, start_id);
     match start_t.sty {
-        ty::ty_bare_fn(..) => {
+        ty::TyBareFn(..) => {
             match tcx.map.find(start_id) {
                 Some(ast_map::NodeItem(it)) => {
                     match it.node {
-                        ast::ItemFn(_,_,_,ref ps,_)
+                        ast::ItemFn(_,_,_,_,ref ps,_)
                         if ps.is_parameterized() => {
                             span_err!(tcx.sess, start_span, E0132,
                                       "start function is not allowed to have type parameters");
@@ -344,7 +345,4 @@ pub fn check_crate(tcx: &ty::ctxt, trait_map: ty::TraitMap) {
     tcx.sess.abort_if_errors();
 }
 
-#[cfg(stage0)]
-__build_diagnostic_array! { DIAGNOSTICS }
-#[cfg(not(stage0))]
 __build_diagnostic_array! { librustc_typeck, DIAGNOSTICS }

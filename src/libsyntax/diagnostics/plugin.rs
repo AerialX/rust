@@ -14,7 +14,6 @@ use std::collections::BTreeMap;
 use ast;
 use ast::{Ident, Name, TokenTree};
 use codemap::Span;
-use diagnostics::metadata::{check_uniqueness, output_metadata, Duplicate};
 use ext::base::{ExtCtxt, MacEager, MacResult};
 use ext::build::AstBuilder;
 use parse::token;
@@ -100,6 +99,7 @@ pub fn expand_register_diagnostic<'cx>(ecx: &'cx mut ExtCtxt,
         }
         _ => unreachable!()
     };
+
     // Check that the description starts and ends with a newline and doesn't
     // overflow the maximum line width.
     description.map(|raw_msg| {
@@ -110,9 +110,15 @@ pub fn expand_register_diagnostic<'cx>(ecx: &'cx mut ExtCtxt,
                 token::get_ident(*code)
             ));
         }
-        if msg.lines().any(|line| line.len() > MAX_DESCRIPTION_WIDTH) {
+
+        // URLs can be unavoidably longer than the line limit, so we allow them.
+        // Allowed format is: `[name]: http://rust-lang.org/`
+        let is_url = |l: &str| l.starts_with('[') && l.contains("]:") && l.contains("http");
+
+        if msg.lines().any(|line| line.len() > MAX_DESCRIPTION_WIDTH && !is_url(line)) {
             ecx.span_err(span, &format!(
-                "description for error code {} contains a line longer than {} characters",
+                "description for error code {} contains a line longer than {} characters.\n\
+                 if you're inserting a long URL use the footnote style to bypass this check.",
                 token::get_ident(*code), MAX_DESCRIPTION_WIDTH
             ));
         }
@@ -148,7 +154,7 @@ pub fn expand_build_diagnostic_array<'cx>(ecx: &'cx mut ExtCtxt,
                                           token_tree: &[TokenTree])
                                           -> Box<MacResult+'cx> {
     assert_eq!(token_tree.len(), 3);
-    let (crate_name, name) = match (&token_tree[0], &token_tree[2]) {
+    let (_crate_name, name) = match (&token_tree[0], &token_tree[2]) {
         (
             // Crate name.
             &ast::TtToken(_, token::Ident(ref crate_name, _)),
@@ -158,21 +164,9 @@ pub fn expand_build_diagnostic_array<'cx>(ecx: &'cx mut ExtCtxt,
         _ => unreachable!()
     };
 
-    // Check uniqueness of errors and output metadata.
-    with_registered_diagnostics(|diagnostics| {
-        match check_uniqueness(crate_name, &*diagnostics) {
-            Ok(Duplicate(err, location)) => {
-                ecx.span_err(span, &format!(
-                    "error {} from `{}' also found in `{}'",
-                    err, crate_name, location
-                ));
-            },
-            Ok(_) => (),
-            Err(e) => panic!("{}", e.description())
-        }
-
-        output_metadata(&*ecx, crate_name, &*diagnostics).ok().expect("metadata output error");
-    });
+    // FIXME (#25705): we used to ensure error code uniqueness and
+    // output error description JSON metadata here, but the approach
+    // employed was too brittle.
 
     // Construct the output expression.
     let (count, expr) =
@@ -213,9 +207,8 @@ pub fn expand_build_diagnostic_array<'cx>(ecx: &'cx mut ExtCtxt,
             ident: name.clone(),
             attrs: Vec::new(),
             id: ast::DUMMY_NODE_ID,
-            node: ast::ItemStatic(
+            node: ast::ItemConst(
                 ty,
-                ast::MutImmutable,
                 expr,
             ),
             vis: ast::Public,

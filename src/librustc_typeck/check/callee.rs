@@ -127,12 +127,12 @@ fn try_overloaded_call_step<'a, 'tcx>(fcx: &FnCtxt<'a, 'tcx>,
 
     // If the callee is a bare function or a closure, then we're all set.
     match structurally_resolved_type(fcx, callee_expr.span, adjusted_ty).sty {
-        ty::ty_bare_fn(..) => {
+        ty::TyBareFn(..) => {
             fcx.write_autoderef_adjustment(callee_expr.id, autoderefs);
             return Some(CallStep::Builtin);
         }
 
-        ty::ty_closure(def_id, substs) => {
+        ty::TyClosure(def_id, substs) => {
             assert_eq!(def_id.krate, ast::LOCAL_CRATE);
 
             // Check whether this is a call to a closure where we
@@ -165,7 +165,7 @@ fn try_overloaded_call_step<'a, 'tcx>(fcx: &FnCtxt<'a, 'tcx>,
         // over the top. The simplest fix by far is to just ignore
         // this case and deref again, so we wind up with
         // `FnMut::call_mut(&mut *x, ())`.
-        ty::ty_rptr(..) if autoderefs == 0 => {
+        ty::TyRef(..) if autoderefs == 0 => {
             return None;
         }
 
@@ -184,11 +184,11 @@ fn try_overloaded_call_traits<'a,'tcx>(fcx: &FnCtxt<'a, 'tcx>,
                                        -> Option<ty::MethodCallee<'tcx>>
 {
     // Try the options that are least restrictive on the caller first.
-    for &(opt_trait_def_id, method_name) in [
+    for &(opt_trait_def_id, method_name) in &[
         (fcx.tcx().lang_items.fn_trait(), token::intern("call")),
         (fcx.tcx().lang_items.fn_mut_trait(), token::intern("call_mut")),
         (fcx.tcx().lang_items.fn_once_trait(), token::intern("call_once")),
-    ].iter() {
+    ] {
         let trait_def_id = match opt_trait_def_id {
             Some(def_id) => def_id,
             None => continue,
@@ -222,7 +222,7 @@ fn confirm_builtin_call<'a,'tcx>(fcx: &FnCtxt<'a,'tcx>,
     let error_fn_sig;
 
     let fn_sig = match callee_ty.sty {
-        ty::ty_bare_fn(_, &ty::BareFnTy {ref sig, ..}) => {
+        ty::TyBareFn(_, &ty::BareFnTy {ref sig, ..}) => {
             sig
         }
         _ => {
@@ -379,7 +379,7 @@ impl<'tcx> DeferredCallResolution<'tcx> for CallResolution<'tcx> {
                        method_callee.repr(fcx.tcx()));
 
                 for (&method_arg_ty, &self_arg_ty) in
-                    method_sig.inputs[1..].iter().zip(self.fn_sig.inputs.iter())
+                    method_sig.inputs[1..].iter().zip(&self.fn_sig.inputs)
                 {
                     demand::eqtype(fcx, self.call_expr.span, self_arg_ty, method_arg_ty);
                 }

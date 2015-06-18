@@ -279,8 +279,8 @@ impl<T> VecPerParamSpace<T> {
         let self_limit = type_limit + s.len();
 
         let mut content = t;
-        content.extend(s.into_iter());
-        content.extend(f.into_iter());
+        content.extend(s);
+        content.extend(f);
 
         VecPerParamSpace {
             type_limit: type_limit,
@@ -446,20 +446,6 @@ impl<T> VecPerParamSpace<T> {
         VecPerParamSpace::new_internal(result,
                                        self.type_limit,
                                        self.self_limit)
-    }
-
-    pub fn map_move<U, F>(self, mut pred: F) -> VecPerParamSpace<U> where
-        F: FnMut(T) -> U,
-    {
-        let SeparateVecsPerParamSpace {
-            types: t,
-            selfs: s,
-            fns: f
-        } = self.split();
-
-        VecPerParamSpace::new(t.into_iter().map(|p| pred(p)).collect(),
-                              s.into_iter().map(|p| pred(p)).collect(),
-                              f.into_iter().map(|p| pred(p)).collect())
     }
 
     pub fn split(self) -> SeparateVecsPerParamSpace<T> {
@@ -661,7 +647,7 @@ impl<'a, 'tcx> TypeFolder<'tcx> for SubstFolder<'a, 'tcx> {
         self.ty_stack_depth += 1;
 
         let t1 = match t.sty {
-            ty::ty_param(p) => {
+            ty::TyParam(p) => {
                 self.ty_for_param(p, t)
             }
             _ => {

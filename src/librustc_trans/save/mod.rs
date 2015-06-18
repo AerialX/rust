@@ -10,6 +10,7 @@
 
 use session::Session;
 use middle::ty;
+use middle::def;
 
 use std::env;
 use std::fs::{self, File};
@@ -23,8 +24,10 @@ use syntax::parse::token::{self, get_ident, keywords};
 use syntax::visit::{self, Visitor};
 use syntax::print::pprust::ty_to_string;
 
+use util::ppaux;
 
 use self::span_utils::SpanUtils;
+
 
 mod span_utils;
 mod recorder;
@@ -44,14 +47,28 @@ pub struct CrateData {
 
 /// Data for any entity in the Rust language. The actual data contained varied
 /// with the kind of entity being queried. See the nested structs for details.
+#[derive(Debug)]
 pub enum Data {
     /// Data for all kinds of functions and methods.
     FunctionData(FunctionData),
-    /// Data for local and global variables (consts and statics).
+    /// Data for local and global variables (consts and statics), and fields.
     VariableData(VariableData),
+    /// Data for modules.
+    ModData(ModData),
+    /// Data for Enums.
+    EnumData(EnumData),
+    /// Data for impls.
+    ImplData(ImplData),
+
+    /// Data for the use of some variable (e.g., the use of a local variable, which
+    /// will refere to that variables declaration).
+    VariableRefData(VariableRefData),
+    /// Data for a reference to a type or trait.
+    TypeRefData(TypeRefData),
 }
 
 /// Data for all kinds of functions and methods.
+#[derive(Debug)]
 pub struct FunctionData {
     pub id: NodeId,
     pub name: String,
@@ -62,6 +79,7 @@ pub struct FunctionData {
 }
 
 /// Data for local and global variables (consts and statics).
+#[derive(Debug)]
 pub struct VariableData {
     pub id: NodeId,
     pub name: String,
@@ -71,6 +89,58 @@ pub struct VariableData {
     pub value: String,
     pub type_value: String,
 }
+
+/// Data for modules.
+#[derive(Debug)]
+pub struct ModData {
+    pub id: NodeId,
+    pub name: String,
+    pub qualname: String,
+    pub span: Span,
+    pub scope: NodeId,
+    pub filename: String,
+}
+
+/// Data for enum declarations.
+#[derive(Debug)]
+pub struct EnumData {
+    pub id: NodeId,
+    pub value: String,
+    pub qualname: String,
+    pub span: Span,
+    pub scope: NodeId,
+}
+
+#[derive(Debug)]
+pub struct ImplData {
+    pub id: NodeId,
+    pub span: Span,
+    pub scope: NodeId,
+    // FIXME: I'm not really sure inline data is the best way to do this. Seems
+    // OK in this case, but generalising leads to returning chunks of AST, which
+    // feels wrong.
+    pub trait_ref: Option<TypeRefData>,
+    pub self_ref: Option<TypeRefData>,
+}
+
+/// Data for the use of some item (e.g., the use of a local variable, which
+/// will refere to that variables declaration (by ref_id)).
+#[derive(Debug)]
+pub struct VariableRefData {
+    pub name: String,
+    pub span: Span,
+    pub scope: NodeId,
+    pub ref_id: DefId,
+}
+
+/// Data for a reference to a type or trait.
+#[derive(Debug)]
+pub struct TypeRefData {
+    pub span: Span,
+    pub scope: NodeId,
+    pub ref_id: DefId,
+}
+
 
 impl<'l, 'tcx: 'l> SaveContext<'l, 'tcx> {
     pub fn new(sess: &'l Session,
@@ -97,7 +167,7 @@ impl<'l, 'tcx: 'l> SaveContext<'l, 'tcx> {
 
     pub fn get_item_data(&self, item: &ast::Item) -> Data {
         match item.node {
-            ast::Item_::ItemFn(..) => {
+            ast::ItemFn(..) => {
                 let name = self.analysis.ty_cx.map.path_to_string(item.id);
                 let qualname = format!("::{}", name);
                 let sub_span = self.span_utils.sub_span_after_keyword(item.span, keywords::Fn);
@@ -116,7 +186,7 @@ impl<'l, 'tcx: 'l> SaveContext<'l, 'tcx> {
 
                 // If the variable is immutable, save the initialising expression.
                 let (value, keyword) = match mt {
-                    ast::MutMutable => (String::from_str("<mutable>"), keywords::Mut),
+                    ast::MutMutable => (String::from("<mutable>"), keywords::Mut),
                     ast::MutImmutable => (self.span_utils.snippet(expr.span), keywords::Static),
                 };
 
@@ -146,6 +216,70 @@ impl<'l, 'tcx: 'l> SaveContext<'l, 'tcx> {
                     type_value: ty_to_string(&typ),
                 })
             }
+            ast::ItemMod(ref m) => {
+                let qualname = format!("::{}", self.analysis.ty_cx.map.path_to_string(item.id));
+
+                let cm = self.sess.codemap();
+                let filename = cm.span_to_filename(m.inner);
+
+                let sub_span = self.span_utils.sub_span_after_keyword(item.span, keywords::Mod);
+
+                Data::ModData(ModData {
+                    id: item.id,
+                    name: get_ident(item.ident).to_string(),
+                    qualname: qualname,
+                    span: sub_span.unwrap(),
+                    scope: self.analysis.ty_cx.map.get_parent(item.id),
+                    filename: filename,
+                })
+            },
+            ast::ItemEnum(..) => {
+                let enum_name = format!("::{}", self.analysis.ty_cx.map.path_to_string(item.id));
+                let val = self.span_utils.snippet(item.span);
+                let sub_span = self.span_utils.sub_span_after_keyword(item.span, keywords::Enum);
+
+                Data::EnumData(EnumData {
+                    id: item.id,
+                    value: val,
+                    span: sub_span.unwrap(),
+                    qualname: enum_name,
+                    scope: self.analysis.ty_cx.map.get_parent(item.id),
+                })
+            },
+            ast::ItemImpl(_, _, _, ref trait_ref, ref typ, _) => {
+                let mut type_data = None;
+                let sub_span;
+
+                let parent = self.analysis.ty_cx.map.get_parent(item.id);
+
+                match typ.node {
+                    // Common case impl for a struct or something basic.
+                    ast::TyPath(None, ref path) => {
+                        sub_span = self.span_utils.sub_span_for_type_name(path.span).unwrap();
+                        type_data = self.lookup_ref_id(typ.id).map(|id| TypeRefData {
+                            span: sub_span,
+                            scope: parent,
+                            ref_id: id,
+                        });
+                    },
+                    _ => {
+                        // Less useful case, impl for a compound type.
+                        let span = typ.span;
+                        sub_span = self.span_utils.sub_span_for_type_name(span).unwrap_or(span);
+                    }
+                }
+
+                let trait_data =
+                    trait_ref.as_ref().and_then(|tr| self.get_trait_ref_data(tr, parent));
+
+                Data::ImplData(ImplData {
+                    id: item.id,
+                    span: sub_span,
+                    scope: parent,
+                    trait_ref: trait_data,
+                    self_ref: type_data,
+                })
+            }
             _ => {
                 // FIXME
                 unimplemented!();
@@ -153,10 +287,147 @@ impl<'l, 'tcx: 'l> SaveContext<'l, 'tcx> {
         }
     }
 
+    // FIXME: we ought to be able to get the parent id ourselves, but we can't
+    // for now.
+    pub fn get_field_data(&self, field: &ast::StructField, parent: NodeId) -> Option<Data> {
+        match field.node.kind {
+            ast::NamedField(ident, _) => {
+                let name = get_ident(ident);
+                let qualname = format!("::{}::{}",
+                                       self.analysis.ty_cx.map.path_to_string(parent),
+                                       name);
+                let typ = ppaux::ty_to_string(&self.analysis.ty_cx,
+                                              *self.analysis.ty_cx.node_types()
+                                                  .get(&field.node.id).unwrap());
+                let sub_span = self.span_utils.sub_span_before_token(field.span, token::Colon);
+                Some(Data::VariableData(VariableData {
+                    id: field.node.id,
+                    name: get_ident(ident).to_string(),
+                    qualname: qualname,
+                    span: sub_span.unwrap(),
+                    scope: parent,
+                    value: "".to_owned(),
+                    type_value: typ,
+                }))
+            },
+            _ => None,
+        }
+    }
+
+    // FIXME: we ought to be able to get the parent id ourselves, but we can't
+    // for now.
+    pub fn get_trait_ref_data(&self,
+                              trait_ref: &ast::TraitRef,
+                              parent: NodeId)
+                              -> Option<TypeRefData> {
+        self.lookup_ref_id(trait_ref.ref_id).map(|def_id| {
+            let span = trait_ref.path.span;
+            let sub_span = self.span_utils.sub_span_for_type_name(span).unwrap_or(span);
+            TypeRefData {
+                span: sub_span,
+                scope: parent,
+                ref_id: def_id,
+            }
+        })
+    }
+
+    pub fn get_expr_data(&self, expr: &ast::Expr) -> Option<Data> {
+        match expr.node {
+            ast::ExprField(ref sub_ex, ident) => {
+                let ty = &ty::expr_ty_adjusted(&self.analysis.ty_cx, &sub_ex).sty;
+                match *ty {
+                    ty::TyStruct(def_id, _) => {
+                        let fields = ty::lookup_struct_fields(&self.analysis.ty_cx, def_id);
+                        for f in &fields {
+                            if f.name == ident.node.name {
+                                let sub_span = self.span_utils.span_for_last_ident(expr.span);
+                                return Some(Data::VariableRefData(VariableRefData {
+                                    name: get_ident(ident.node).to_string(),
+                                    span: sub_span.unwrap(),
+                                    scope: self.analysis.ty_cx.map.get_parent(expr.id),
+                                    ref_id: f.id,
+                                }));
+                            }
+                        }
+
+                        self.sess.span_bug(expr.span,
+                                           &format!("Couldn't find field {} on {:?}",
+                                                    &get_ident(ident.node),
+                                                    ty))
+                    }
+                    _ => {
+                        debug!("Expected struct type, found {:?}", ty);
+                        None
+                    }
+                }
+            }
+            ast::ExprStruct(ref path, _, _) => {
+                let ty = &ty::expr_ty_adjusted(&self.analysis.ty_cx, expr).sty;
+                match *ty {
+                    ty::TyStruct(def_id, _) => {
+                        let sub_span = self.span_utils.span_for_last_ident(path.span);
+                        Some(Data::TypeRefData(TypeRefData {
+                            span: sub_span.unwrap(),
+                            scope: self.analysis.ty_cx.map.get_parent(expr.id),
+                            ref_id: def_id,
+                        }))
+                    }
+                    _ => {
+                        // FIXME ty could legitimately be a TyEnum, but then we will fail
+                        // later if we try to look up the fields.
+                        debug!("expected TyStruct, found {:?}", ty);
+                        None
+                    }
+                }
+            }
+            _ => {
+                // FIXME
+                unimplemented!();
+            }
+        }
+    }
+
+    pub fn get_field_ref_data(&self,
+                              field_ref: &ast::Field,
+                              struct_id: DefId,
+                              parent: NodeId)
+                              -> VariableRefData {
+        let fields = ty::lookup_struct_fields(&self.analysis.ty_cx, struct_id);
+        let field_name = get_ident(field_ref.ident.node).to_string();
+        for f in &fields {
+            if f.name == field_ref.ident.node.name {
+                // We don't really need a sub-span here, but no harm done
+                let sub_span = self.span_utils.span_for_last_ident(field_ref.ident.span);
+                return VariableRefData {
+                    name: field_name,
+                    span: sub_span.unwrap(),
+                    scope: parent,
+                    ref_id: f.id,
+                };
+            }
+        }
+
+        self.sess.span_bug(field_ref.span,
+                           &format!("Couldn't find field {}", field_name));
+    }
+
     pub fn get_data_for_id(&self, _id: &NodeId) -> Data {
         // FIXME
         unimplemented!();
     }
+
+    fn lookup_ref_id(&self, ref_id: NodeId) -> Option<DefId> {
+        if !self.analysis.ty_cx.def_map.borrow().contains_key(&ref_id) {
+            self.sess.bug(&format!("def_map has no key for {} in lookup_type_ref",
+                                  ref_id));
+        }
+        let def = self.analysis.ty_cx.def_map.borrow().get(&ref_id).unwrap().full_def();
+        match def {
+            def::DefPrimTy(_) => None,
+            _ => Some(def.def_id()),
+        }
+    }
+
 }
 
 // An AST visitor for collecting paths from patterns.
@@ -184,7 +455,7 @@ impl<'v> Visitor<'v> for PathCollector {
                 self.collected_paths.push((p.id,
                                            path.clone(),
                                            ast::MutMutable,
-                                           recorder::StructRef));
+                                           recorder::TypeRef));
             }
             ast::PatEnum(ref path, _) |
             ast::PatQPath(_, ref path) => {
@@ -226,7 +497,7 @@ pub fn process_crate(sess: &Session,
         Some(name) => name.to_string(),
         None => {
             info!("Could not find crate name, using 'unknown_crate'");
-            String::from_str("unknown_crate")
+            String::from("unknown_crate")
         },
     };
 
@@ -267,7 +538,7 @@ pub fn process_crate(sess: &Session,
 
     let mut visitor = dump_csv::DumpCsvVisitor::new(sess, analysis, output_file);
 
-    visitor.dump_crate_info(&cratename[..], krate);
+    visitor.dump_crate_info(&cratename, krate);
     visit::walk_crate(&mut visitor, krate);
 }
 

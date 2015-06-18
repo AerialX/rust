@@ -60,7 +60,7 @@
 //! sort of a minor point so I've opted to leave it for later---after all
 //! we may want to adjust precisely when coercions occur.
 
-use check::{autoderef, FnCtxt, NoPreference, PreferMutLvalue, UnresolvedTypeAction};
+use check::{autoderef, FnCtxt, LvaluePreference, UnresolvedTypeAction};
 
 use middle::infer::{self, Coercion};
 use middle::traits::{self, ObligationCause};
@@ -121,13 +121,13 @@ impl<'f, 'tcx> Coerce<'f, 'tcx> {
         // Note: does not attempt to resolve type variables we encounter.
         // See above for details.
         match b.sty {
-            ty::ty_ptr(mt_b) => {
+            ty::TyRawPtr(mt_b) => {
                 return self.unpack_actual_value(a, |a| {
                     self.coerce_unsafe_ptr(a, b, mt_b.mutbl)
                 });
             }
 
-            ty::ty_rptr(_, mt_b) => {
+            ty::TyRef(_, mt_b) => {
                 return self.unpack_actual_value(a, |a| {
                     self.coerce_borrowed_pointer(expr_a, a, b, mt_b.mutbl)
                 });
@@ -138,13 +138,13 @@ impl<'f, 'tcx> Coerce<'f, 'tcx> {
 
         self.unpack_actual_value(a, |a| {
             match a.sty {
-                ty::ty_bare_fn(Some(_), a_f) => {
+                ty::TyBareFn(Some(_), a_f) => {
                     // Function items are coercible to any closure
                     // type; function pointers are not (that would
                     // require double indirection).
                     self.coerce_from_fn_item(a, a_f, b)
                 }
-                ty::ty_bare_fn(None, a_f) => {
+                ty::TyBareFn(None, a_f) => {
                     // We permit coercion of fn pointers to drop the
                     // unsafe qualifier.
                     self.coerce_from_fn_pointer(a, a_f, b)
@@ -177,7 +177,7 @@ impl<'f, 'tcx> Coerce<'f, 'tcx> {
         // yield.
 
         match a.sty {
-            ty::ty_rptr(_, mt_a) => {
+            ty::TyRef(_, mt_a) => {
                 try!(coerce_mutbls(mt_a.mutbl, mutbl_b));
             }
             _ => return self.subtype(a, b)
@@ -188,10 +188,7 @@ impl<'f, 'tcx> Coerce<'f, 'tcx> {
         let r_borrow = self.tcx().mk_region(r_borrow);
         let autoref = Some(ty::AutoPtr(r_borrow, mutbl_b));
 
-        let lvalue_pref = match mutbl_b {
-            ast::MutMutable => PreferMutLvalue,
-            ast::MutImmutable => NoPreference
-        };
+        let lvalue_pref = LvaluePreference::from_mutbl(mutbl_b);
         let mut first_error = None;
         let (_, autoderefs, success) = autoderef(self.fcx,
                                                  expr_a.span,
@@ -234,8 +231,8 @@ impl<'f, 'tcx> Coerce<'f, 'tcx> {
     }
 
 
-    // &[T, ..n] or &mut [T, ..n] -> &[T]
-    // or &mut [T, ..n] -> &mut [T]
+    // &[T; n] or &mut [T; n] -> &[T]
+    // or &mut [T; n] -> &mut [T]
     // or &Concrete -> &Trait, etc.
     fn coerce_unsized(&self,
                       source: Ty<'tcx>,
@@ -261,7 +258,7 @@ impl<'f, 'tcx> Coerce<'f, 'tcx> {
 
         // Handle reborrows before selecting `Source: CoerceUnsized<Target>`.
         let (source, reborrow) = match (&source.sty, &target.sty) {
-            (&ty::ty_rptr(_, mt_a), &ty::ty_rptr(_, mt_b)) => {
+            (&ty::TyRef(_, mt_a), &ty::TyRef(_, mt_b)) => {
                 try!(coerce_mutbls(mt_a.mutbl, mt_b.mutbl));
 
                 let coercion = Coercion(self.origin.span());
@@ -269,7 +266,7 @@ impl<'f, 'tcx> Coerce<'f, 'tcx> {
                 let region = self.tcx().mk_region(r_borrow);
                 (mt_a.ty, Some(ty::AutoPtr(region, mt_b.mutbl)))
             }
-            (&ty::ty_rptr(_, mt_a), &ty::ty_ptr(mt_b)) => {
+            (&ty::TyRef(_, mt_a), &ty::TyRawPtr(mt_b)) => {
                 try!(coerce_mutbls(mt_a.mutbl, mt_b.mutbl));
                 (mt_a.ty, Some(ty::AutoUnsafe(mt_b.mutbl)))
             }
@@ -323,7 +320,9 @@ impl<'f, 'tcx> Coerce<'f, 'tcx> {
                 }
 
                 Ok(Some(vtable)) => {
-                    vtable.map_move_nested(|o| queue.push_back(o));
+                    for obligation in vtable.nested_obligations() {
+                        queue.push_back(obligation);
+                    }
                 }
             }
         }
@@ -356,7 +355,7 @@ impl<'f, 'tcx> Coerce<'f, 'tcx> {
             debug!("coerce_from_fn_pointer(a={}, b={})",
                    a.repr(self.tcx()), b.repr(self.tcx()));
 
-            if let ty::ty_bare_fn(None, fn_ty_b) = b.sty {
+            if let ty::TyBareFn(None, fn_ty_b) = b.sty {
                 match (fn_ty_a.unsafety, fn_ty_b.unsafety) {
                     (ast::Unsafety::Normal, ast::Unsafety::Unsafe) => {
                         let unsafe_a = self.tcx().safe_to_unsafe_fn_ty(fn_ty_a);
@@ -385,7 +384,7 @@ impl<'f, 'tcx> Coerce<'f, 'tcx> {
                    a.repr(self.tcx()), b.repr(self.tcx()));
 
             match b.sty {
-                ty::ty_bare_fn(None, _) => {
+                ty::TyBareFn(None, _) => {
                     let a_fn_pointer = ty::mk_bare_fn(self.tcx(), None, fn_ty_a);
                     try!(self.subtype(a_fn_pointer, b));
                     Ok(Some(ty::AdjustReifyFnPointer))
@@ -405,7 +404,7 @@ impl<'f, 'tcx> Coerce<'f, 'tcx> {
                b.repr(self.tcx()));
 
         let mt_a = match a.sty {
-            ty::ty_rptr(_, mt) | ty::ty_ptr(mt) => mt,
+            ty::TyRef(_, mt) | ty::TyRawPtr(mt) => mt,
             _ => {
                 return self.subtype(a, b);
             }

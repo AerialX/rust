@@ -443,7 +443,7 @@ impl<'a,'tcx> InferCtxtExt for InferCtxt<'a,'tcx> {
         let escaping_region_vars: FnvHashSet<_> =
             escaping_types
             .iter()
-            .flat_map(|&t| ty_fold::collect_regions(self.tcx, &t).into_iter())
+            .flat_map(|&t| ty_fold::collect_regions(self.tcx, &t))
             .collect();
 
         region_vars.retain(|&region_vid| {
@@ -530,7 +530,7 @@ pub fn skolemize_late_bound_regions<'a,'tcx,T>(infcx: &InferCtxt<'a,'tcx>,
      * details.
      */
 
-    let (result, map) = ty::replace_late_bound_regions(infcx.tcx, binder, |br| {
+    let (result, map) = ty_fold::replace_late_bound_regions(infcx.tcx, binder, |br| {
         infcx.region_vars.new_skolemized(br, &snapshot.region_vars_snapshot)
     });
 

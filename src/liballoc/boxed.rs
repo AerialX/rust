@@ -57,15 +57,11 @@ use core::any::Any;
 use core::cmp::Ordering;
 use core::fmt;
 use core::hash::{self, Hash};
+use core::marker::Unsize;
 use core::mem;
-use core::ops::{Deref, DerefMut};
+use core::ops::{CoerceUnsized, Deref, DerefMut};
 use core::ptr::{Unique};
 use core::raw::{TraitObject};
-
-#[cfg(not(stage0))]
-use core::marker::Unsize;
-#[cfg(not(stage0))]
-use core::ops::CoerceUnsized;
 
 /// A value that represents the heap. This is the default place that the `box`
 /// keyword allocates into when no place is supplied.
@@ -85,7 +81,7 @@ use core::ops::CoerceUnsized;
 #[lang = "exchange_heap"]
 #[unstable(feature = "alloc",
            reason = "may be renamed; uncertain about custom allocator design")]
-pub static HEAP: () = ();
+pub const HEAP: () = ();
 
 /// A pointer type for heap allocation.
 ///
@@ -139,24 +135,20 @@ impl<T : ?Sized> Box<T> {
 /// convert pointer back to `Box` with `Box::from_raw` function, because
 /// `Box` does not specify, how memory is allocated.
 ///
-/// Function is unsafe, because result of this function is no longer
-/// automatically managed that may lead to memory or other resource
-/// leak.
-///
 /// # Examples
 /// ```
 /// # #![feature(alloc)]
 /// use std::boxed;
 ///
 /// let seventeen = Box::new(17u32);
-/// let raw = unsafe { boxed::into_raw(seventeen) };
+/// let raw = boxed::into_raw(seventeen);
 /// let boxed_again = unsafe { Box::from_raw(raw) };
 /// ```
 #[unstable(feature = "alloc",
            reason = "may be renamed")]
 #[inline]
-pub unsafe fn into_raw<T : ?Sized>(b: Box<T>) -> *mut T {
-    mem::transmute(b)
+pub fn into_raw<T : ?Sized>(b: Box<T>) -> *mut T {
+    unsafe { mem::transmute(b) }
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -396,5 +388,4 @@ impl<'a,A,R> FnOnce<A> for Box<FnBox<A,Output=R>+Send+'a> {
     }
 }
 
-#[cfg(not(stage0))]
 impl<T: ?Sized+Unsize<U>, U: ?Sized> CoerceUnsized<Box<U>> for Box<T> {}

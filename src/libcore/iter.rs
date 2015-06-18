@@ -177,7 +177,7 @@ pub trait Iterator {
     /// ```
     /// let a = [0];
     /// let b = [1];
-    /// let mut it = a.iter().chain(b.iter());
+    /// let mut it = a.iter().chain(&b);
     /// assert_eq!(it.next(), Some(&0));
     /// assert_eq!(it.next(), Some(&1));
     /// assert!(it.next().is_none());
@@ -200,7 +200,7 @@ pub trait Iterator {
     /// ```
     /// let a = [0];
     /// let b = [1];
-    /// let mut it = a.iter().zip(b.iter());
+    /// let mut it = a.iter().zip(&b);
     /// assert_eq!(it.next(), Some((&0, &1)));
     /// assert!(it.next().is_none());
     /// ```
@@ -326,7 +326,6 @@ pub trait Iterator {
     /// # Examples
     ///
     /// ```
-    /// # #![feature(core)]
     /// let xs = [100, 200, 300];
     /// let mut it = xs.iter().cloned().peekable();
     /// assert_eq!(*it.peek().unwrap(), 100);
@@ -452,20 +451,19 @@ pub trait Iterator {
         Scan{iter: self, f: f, state: initial_state}
     }
 
-    /// Creates an iterator that maps each element to an iterator,
-    /// and yields the elements of the produced iterators.
+    /// Takes a function that maps each element to a new iterator and yields
+    /// all the elements of the produced iterators.
+    ///
+    /// This is useful for unraveling nested structures.
     ///
     /// # Examples
     ///
     /// ```
-    /// # #![feature(core)]
-    /// let xs = [2, 3];
-    /// let ys = [0, 1, 0, 1, 2];
-    /// let it = xs.iter().flat_map(|&x| (0..).take(x));
-    /// // Check that `it` has the same elements as `ys`
-    /// for (i, x) in it.enumerate() {
-    ///     assert_eq!(x, ys[i]);
-    /// }
+    /// let words = ["alpha", "beta", "gamma"];
+    /// let merged: String = words.iter()
+    ///                           .flat_map(|s| s.chars())
+    ///                           .collect();
+    /// assert_eq!(merged, "alphabetagamma");
     /// ```
     #[inline]
     #[stable(feature = "rust1", since = "1.0.0")]
@@ -515,15 +513,13 @@ pub trait Iterator {
     /// # Examples
     ///
     /// ```
-    /// # #![feature(core)]
-    ///
     /// let a = [1, 4, 2, 3, 8, 9, 6];
     /// let sum: i32 = a.iter()
     ///                 .map(|x| *x)
     ///                 .inspect(|&x| println!("filtering {}", x))
     ///                 .filter(|&x| x % 2 == 0)
     ///                 .inspect(|&x| println!("{} made it through", x))
-    ///                 .sum();
+    ///                 .fold(0, |sum, i| sum + i);
     /// println!("{}", sum);
     /// ```
     #[inline]
@@ -573,7 +569,6 @@ pub trait Iterator {
     /// do not.
     ///
     /// ```
-    /// # #![feature(core)]
     /// let vec = vec![1, 2, 3, 4];
     /// let (even, odd): (Vec<_>, Vec<_>) = vec.into_iter().partition(|&n| n % 2 == 0);
     /// assert_eq!(even, [2, 4]);
@@ -590,9 +585,9 @@ pub trait Iterator {
 
         for x in self {
             if f(&x) {
-                left.extend(Some(x).into_iter())
+                left.extend(Some(x))
             } else {
-                right.extend(Some(x).into_iter())
+                right.extend(Some(x))
             }
         }
 
@@ -898,7 +893,6 @@ pub trait Iterator {
     ///
     /// ```
     /// # #![feature(core)]
-    ///
     /// let a = [-3_i32, 0, 1, 5, -10];
     /// assert_eq!(*a.iter().max_by(|x| x.abs()).unwrap(), -10);
     /// ```
@@ -927,7 +921,6 @@ pub trait Iterator {
     ///
     /// ```
     /// # #![feature(core)]
-    ///
     /// let a = [-3_i32, 0, 1, 5, -10];
     /// assert_eq!(*a.iter().min_by(|x| x.abs()).unwrap(), 0);
     /// ```
@@ -972,7 +965,6 @@ pub trait Iterator {
     /// # Examples
     ///
     /// ```
-    /// # #![feature(core)]
     /// let a = [(1, 2), (3, 4)];
     /// let (left, right): (Vec<_>, Vec<_>) = a.iter().cloned().unzip();
     /// assert_eq!(left, [1, 3]);
@@ -1002,15 +994,26 @@ pub trait Iterator {
         us.extend(SizeHint(lo, hi, marker::PhantomData));
 
         for (t, u) in self {
-            ts.extend(Some(t).into_iter());
-            us.extend(Some(u).into_iter());
+            ts.extend(Some(t));
+            us.extend(Some(u));
         }
 
         (ts, us)
     }
 
-    /// Creates an iterator that clones the elements it yields. Useful for
-    /// converting an Iterator<&T> to an Iterator<T>.
+    /// Creates an iterator that clones the elements it yields.
+    ///
+    /// This is useful for converting an Iterator<&T> to an Iterator<T>,
+    /// so it's a more convenient form of `map(|&x| x)`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let a = [0, 1, 2];
+    /// let v_cloned: Vec<_> = a.iter().cloned().collect();
+    /// let v_map: Vec<_> = a.iter().map(|&x| x).collect();
+    /// assert_eq!(v_cloned, v_map);
+    /// ```
     #[stable(feature = "rust1", since = "1.0.0")]
     fn cloned<'a, T: 'a>(self) -> Cloned<Self>
         where Self: Sized + Iterator<Item=&'a T>, T: Clone
@@ -1055,9 +1058,8 @@ pub trait Iterator {
     ///
     /// ```
     /// # #![feature(core)]
-    ///
     /// let a = [1, 2, 3, 4, 5];
-    /// let mut it = a.iter().cloned();
+    /// let it = a.iter();
     /// assert_eq!(it.sum::<i32>(), 15);
     /// ```
     #[unstable(feature="core")]
@@ -1074,7 +1076,6 @@ pub trait Iterator {
     ///
     /// ```
     /// # #![feature(core)]
-    ///
     /// fn factorial(n: u32) -> u32 {
     ///     (1..).take_while(|&i| i <= n).product()
     /// }
@@ -1370,7 +1371,7 @@ impl<T: Clone> MinMaxResult<T> {
 }
 
 /// An iterator that clones the elements of an underlying iterator
-#[unstable(feature = "core", reason = "recent addition")]
+#[stable(feature = "iter_cloned", since = "1.1.0")]
 #[must_use = "iterator adaptors are lazy and do nothing unless consumed"]
 #[derive(Clone)]
 pub struct Cloned<I> {
@@ -2720,7 +2721,7 @@ impl<A: Step> ops::Range<A> {
     /// # Examples
     ///
     /// ```
-    /// # #![feature(step_by, core)]
+    /// # #![feature(step_by)]
     /// for i in (0..10).step_by(2) {
     ///     println!("{}", i);
     /// }
@@ -3020,6 +3021,101 @@ pub fn repeat<T: Clone>(elt: T) -> Repeat<T> {
     Repeat{element: elt}
 }
 
+/// An iterator that yields nothing.
+#[unstable(feature="iter_empty", reason = "new addition")]
+pub struct Empty<T>(marker::PhantomData<T>);
+
+#[unstable(feature="iter_empty", reason = "new addition")]
+impl<T> Iterator for Empty<T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<T> {
+        None
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>){
+        (0, Some(0))
+    }
+}
+
+#[unstable(feature="iter_empty", reason = "new addition")]
+impl<T> DoubleEndedIterator for Empty<T> {
+    fn next_back(&mut self) -> Option<T> {
+        None
+    }
+}
+
+#[unstable(feature="iter_empty", reason = "new addition")]
+impl<T> ExactSizeIterator for Empty<T> {
+    fn len(&self) -> usize {
+        0
+    }
+}
+
+// not #[derive] because that adds a Clone bound on T,
+// which isn't necessary.
+#[unstable(feature="iter_empty", reason = "new addition")]
+impl<T> Clone for Empty<T> {
+    fn clone(&self) -> Empty<T> {
+        Empty(marker::PhantomData)
+    }
+}
+
+// not #[derive] because that adds a Default bound on T,
+// which isn't necessary.
+#[unstable(feature="iter_empty", reason = "new addition")]
+impl<T> Default for Empty<T> {
+    fn default() -> Empty<T> {
+        Empty(marker::PhantomData)
+    }
+}
+
+/// Creates an iterator that yields nothing.
+#[unstable(feature="iter_empty", reason = "new addition")]
+pub fn empty<T>() -> Empty<T> {
+    Empty(marker::PhantomData)
+}
+
+/// An iterator that yields an element exactly once.
+#[derive(Clone)]
+#[unstable(feature="iter_once", reason = "new addition")]
+pub struct Once<T> {
+    inner: ::option::IntoIter<T>
+}
+
+#[unstable(feature="iter_once", reason = "new addition")]
+impl<T> Iterator for Once<T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<T> {
+        self.inner.next()
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
+    }
+}
+
+#[unstable(feature="iter_once", reason = "new addition")]
+impl<T> DoubleEndedIterator for Once<T> {
+    fn next_back(&mut self) -> Option<T> {
+        self.inner.next_back()
+    }
+}
+
+#[unstable(feature="iter_once", reason = "new addition")]
+impl<T> ExactSizeIterator for Once<T> {
+    fn len(&self) -> usize {
+        self.inner.len()
+    }
+}
+
+/// Creates an iterator that yields an element exactly once.
+#[unstable(feature="iter_once", reason = "new addition")]
+pub fn once<T>(value: T) -> Once<T> {
+    Once { inner: Some(value).into_iter() }
+}
+
 /// Functions for lexicographical ordering of sequences.
 ///
 /// Lexicographical ordering through `<`, `<=`, `>=`, `>` requires
@@ -3114,7 +3210,7 @@ pub mod order {
     }
 
     /// Returns `a` < `b` lexicographically (Using partial order, `PartialOrd`)
-    pub fn lt<R: Iterator, L: Iterator>(mut a: L, mut b: R) -> bool where
+    pub fn lt<L: Iterator, R: Iterator>(mut a: L, mut b: R) -> bool where
         L::Item: PartialOrd<R::Item>,
     {
         loop {

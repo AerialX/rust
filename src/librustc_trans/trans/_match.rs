@@ -233,7 +233,8 @@ struct ConstantExpr<'a>(&'a ast::Expr);
 
 impl<'a> ConstantExpr<'a> {
     fn eq(self, other: ConstantExpr<'a>, tcx: &ty::ctxt) -> bool {
-        match const_eval::compare_lit_exprs(tcx, self.0, other.0, None) {
+        match const_eval::compare_lit_exprs(tcx, self.0, other.0, None,
+                                            |id| {ty::node_id_item_substs(tcx, id).substs}) {
             Some(result) => result == Ordering::Equal,
             None => panic!("compare_list_exprs: type mismatch"),
         }
@@ -278,14 +279,14 @@ impl<'a, 'tcx> Opt<'a, 'tcx> {
         match *self {
             ConstantValue(ConstantExpr(lit_expr), _) => {
                 let lit_ty = ty::node_id_to_type(bcx.tcx(), lit_expr.id);
-                let (llval, _) = consts::const_expr(ccx, &*lit_expr, bcx.fcx.param_substs);
+                let (llval, _) = consts::const_expr(ccx, &*lit_expr, bcx.fcx.param_substs, None);
                 let lit_datum = immediate_rvalue(llval, lit_ty);
                 let lit_datum = unpack_datum!(bcx, lit_datum.to_appropriate_datum(bcx));
                 SingleResult(Result::new(bcx, lit_datum.val))
             }
             ConstantRange(ConstantExpr(ref l1), ConstantExpr(ref l2), _) => {
-                let (l1, _) = consts::const_expr(ccx, &**l1, bcx.fcx.param_substs);
-                let (l2, _) = consts::const_expr(ccx, &**l2, bcx.fcx.param_substs);
+                let (l1, _) = consts::const_expr(ccx, &**l1, bcx.fcx.param_substs, None);
+                let (l2, _) = consts::const_expr(ccx, &**l2, bcx.fcx.param_substs, None);
                 RangeResult(Result::new(bcx, l1), Result::new(bcx, l2))
             }
             Variant(disr_val, ref repr, _, _) => {
@@ -849,10 +850,10 @@ fn compare_values<'blk, 'tcx>(cx: Block<'blk, 'tcx>,
     }
 
     match rhs_t.sty {
-        ty::ty_rptr(_, mt) => match mt.ty.sty {
-            ty::ty_str => compare_str(cx, lhs, rhs, rhs_t, debug_loc),
-            ty::ty_vec(ty, _) => match ty.sty {
-                ty::ty_uint(ast::TyU8) => {
+        ty::TyRef(_, mt) => match mt.ty.sty {
+            ty::TyStr => compare_str(cx, lhs, rhs, rhs_t, debug_loc),
+            ty::TyArray(ty, _) | ty::TySlice(ty) => match ty.sty {
+                ty::TyUint(ast::TyU8) => {
                     // NOTE: cast &[u8] and &[u8; N] to &str and abuse the str_eq lang item,
                     // which calls memcmp().
                     let pat_len = val_ty(rhs).element_type().array_length();
@@ -1091,7 +1092,7 @@ fn compile_submatch_continue<'a, 'p, 'blk, 'tcx>(mut bcx: Block<'blk, 'tcx>,
         ).collect();
 
         match left_ty.sty {
-            ty::ty_struct(def_id, substs) if !type_is_sized(bcx.tcx(), left_ty) => {
+            ty::TyStruct(def_id, substs) if !type_is_sized(bcx.tcx(), left_ty) => {
                 // The last field is technically unsized but
                 // since we can only ever match that field behind
                 // a reference we construct a fat ptr here.
@@ -1115,7 +1116,7 @@ fn compile_submatch_continue<'a, 'p, 'blk, 'tcx>(mut bcx: Block<'blk, 'tcx>,
         Some(vec!(Load(bcx, val)))
     } else {
         match left_ty.sty {
-            ty::ty_vec(_, Some(n)) => {
+            ty::TyArray(_, n) => {
                 let args = extract_vec_elems(bcx, left_ty, n, 0, val);
                 Some(args.vals)
             }
@@ -1500,7 +1501,7 @@ fn trans_match_inner<'blk, 'tcx>(scope_cx: Block<'blk, 'tcx>,
     };
 
     let mut matches = Vec::new();
-    for (arm_data, pats) in arm_datas.iter().zip(arm_pats.iter()) {
+    for (arm_data, pats) in arm_datas.iter().zip(&arm_pats) {
         matches.extend(pats.iter().map(|p| Match {
             pats: vec![&**p],
             data: arm_data,
@@ -1832,7 +1833,7 @@ fn bind_irrefutable_pat<'blk, 'tcx>(bcx: Block<'blk, 'tcx>,
                 .iter()
                 .chain(slice.iter())
                 .chain(after.iter())
-                .zip(extracted.vals.into_iter())
+                .zip(extracted.vals)
                 .fold(bcx, |bcx, (inner, elem)|
                     bind_irrefutable_pat(bcx, &**inner, elem, cleanup_scope)
                 );

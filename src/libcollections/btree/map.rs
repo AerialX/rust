@@ -879,6 +879,13 @@ impl<K: Ord, V> Extend<(K, V)> for BTreeMap<K, V> {
     }
 }
 
+#[stable(feature = "extend_ref", since = "1.2.0")]
+impl<'a, K: Ord + Copy, V: Copy> Extend<(&'a K, &'a V)> for BTreeMap<K, V> {
+    fn extend<I: IntoIterator<Item=(&'a K, &'a V)>>(&mut self, iter: I) {
+        self.extend(iter.into_iter().map(|(&key, &value)| (key, value)));
+    }
+}
+
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<K: Hash, V: Hash> Hash for BTreeMap<K, V> {
     fn hash<H: Hasher>(&self, state: &mut H) {
@@ -900,7 +907,7 @@ impl<K: Ord, V> Default for BTreeMap<K, V> {
 impl<K: PartialEq, V: PartialEq> PartialEq for BTreeMap<K, V> {
     fn eq(&self, other: &BTreeMap<K, V>) -> bool {
         self.len() == other.len() &&
-            self.iter().zip(other.iter()).all(|(a, b)| a == b)
+            self.iter().zip(other).all(|(a, b)| a == b)
     }
 }
 
@@ -926,7 +933,7 @@ impl<K: Ord, V: Ord> Ord for BTreeMap<K, V> {
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<K: Debug, V: Debug> Debug for BTreeMap<K, V> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.iter().fold(f.debug_map(), |b, (k, v)| b.entry(k, v)).finish()
+        f.debug_map().entries(self.iter()).finish()
     }
 }
 
@@ -1291,14 +1298,13 @@ impl<K, V> BTreeMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// # #![feature(core)]
     /// use std::collections::BTreeMap;
     ///
     /// let mut a = BTreeMap::new();
     /// a.insert(1, "a");
     /// a.insert(2, "b");
     ///
-    /// let keys: Vec<usize> = a.keys().cloned().collect();
+    /// let keys: Vec<_> = a.keys().cloned().collect();
     /// assert_eq!(keys, [1, 2]);
     /// ```
     #[stable(feature = "rust1", since = "1.0.0")]
@@ -1314,7 +1320,6 @@ impl<K, V> BTreeMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// # #![feature(core)]
     /// use std::collections::BTreeMap;
     ///
     /// let mut a = BTreeMap::new();
@@ -1539,7 +1544,7 @@ impl<K: Ord, V> BTreeMap<K, V> {
     /// for (_, balance) in map.range_mut(Included(&"B"), Excluded(&"Cheryl")) {
     ///     *balance += 100;
     /// }
-    /// for (name, balance) in map.iter() {
+    /// for (name, balance) in &map {
     ///     println!("{} => {}", name, balance);
     /// }
     /// ```
@@ -1555,7 +1560,6 @@ impl<K: Ord, V> BTreeMap<K, V> {
     /// # Examples
     ///
     /// ```
-    /// # #![feature(collections)]
     /// use std::collections::BTreeMap;
     ///
     /// let mut count: BTreeMap<&str, usize> = BTreeMap::new();

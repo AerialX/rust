@@ -24,6 +24,10 @@ use sys_common::rwlock as sys;
 /// of the underlying data (exclusive access) and the read portion of this lock
 /// typically allows for read-only access (shared access).
 ///
+/// The priority policy of the lock is dependent on the underlying operating
+/// system's implementation, and this type does not guarantee that any
+/// particular policy will be used.
+///
 /// The type parameter `T` represents the data that this lock protects. It is
 /// required that `T` satisfies `Send` to be shared across threads and `Sync` to
 /// allow concurrent access through readers. The RAII guards returned from the
@@ -102,10 +106,7 @@ pub struct StaticRwLock {
 /// Constant initialization for a statically-initialized rwlock.
 #[unstable(feature = "std_misc",
            reason = "may be merged with RwLock in the future")]
-pub const RW_LOCK_INIT: StaticRwLock = StaticRwLock {
-    lock: sys::RWLOCK_INIT,
-    poison: poison::FLAG_INIT,
-};
+pub const RW_LOCK_INIT: StaticRwLock = StaticRwLock::new();
 
 /// RAII structure used to release the shared read access of a lock when
 /// dropped.
@@ -142,7 +143,7 @@ impl<T> RwLock<T> {
     /// ```
     #[stable(feature = "rust1", since = "1.0.0")]
     pub fn new(t: T) -> RwLock<T> {
-        RwLock { inner: box RW_LOCK_INIT, data: UnsafeCell::new(t) }
+        RwLock { inner: box StaticRwLock::new(), data: UnsafeCell::new(t) }
     }
 }
 
@@ -280,9 +281,19 @@ impl<T: ?Sized + fmt::Debug> fmt::Debug for RwLock<T> {
 
 struct Dummy(UnsafeCell<()>);
 unsafe impl Sync for Dummy {}
-static DUMMY: Dummy = Dummy(UnsafeCell { value: () });
+static DUMMY: Dummy = Dummy(UnsafeCell::new(()));
 
 impl StaticRwLock {
+    /// Creates a new rwlock.
+    #[unstable(feature = "std_misc",
+               reason = "may be merged with RwLock in the future")]
+    pub const fn new() -> StaticRwLock {
+        StaticRwLock {
+            lock: sys::RWLock::new(),
+            poison: poison::Flag::new(),
+        }
+    }
+
     /// Locks this rwlock with shared read access, blocking the current thread
     /// until it can be acquired.
     ///
@@ -420,7 +431,7 @@ mod tests {
     use rand::{self, Rng};
     use sync::mpsc::channel;
     use thread;
-    use sync::{Arc, RwLock, StaticRwLock, TryLockError, RW_LOCK_INIT};
+    use sync::{Arc, RwLock, StaticRwLock, TryLockError};
 
     #[test]
     fn smoke() {
@@ -433,7 +444,7 @@ mod tests {
 
     #[test]
     fn static_smoke() {
-        static R: StaticRwLock = RW_LOCK_INIT;
+        static R: StaticRwLock = StaticRwLock::new();
         drop(R.read().unwrap());
         drop(R.write().unwrap());
         drop((R.read().unwrap(), R.read().unwrap()));
@@ -443,7 +454,7 @@ mod tests {
 
     #[test]
     fn frob() {
-        static R: StaticRwLock = RW_LOCK_INIT;
+        static R: StaticRwLock = StaticRwLock::new();
         const N: usize = 10;
         const M: usize = 1000;
 

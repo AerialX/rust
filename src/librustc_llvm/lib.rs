@@ -55,6 +55,7 @@ pub use self::CallConv::*;
 pub use self::Visibility::*;
 pub use self::DiagnosticSeverity::*;
 pub use self::Linkage::*;
+pub use self::DLLStorageClassTypes::*;
 
 use std::ffi::CString;
 use std::cell::RefCell;
@@ -121,6 +122,15 @@ pub enum DiagnosticSeverity {
     Warning,
     Remark,
     Note,
+}
+
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub enum DLLStorageClassTypes {
+    DefaultStorageClass = 0,
+    DLLImportStorageClass = 1,
+    DLLExportStorageClass = 2,
 }
 
 bitflags! {
@@ -467,9 +477,6 @@ pub type BuilderRef = *mut Builder_opaque;
 #[allow(missing_copy_implementations)]
 pub enum ExecutionEngine_opaque {}
 pub type ExecutionEngineRef = *mut ExecutionEngine_opaque;
-#[allow(missing_copy_implementations)]
-pub enum RustJITMemoryManager_opaque {}
-pub type RustJITMemoryManagerRef = *mut RustJITMemoryManager_opaque;
 #[allow(missing_copy_implementations)]
 pub enum MemoryBuffer_opaque {}
 pub type MemoryBufferRef = *mut MemoryBuffer_opaque;
@@ -969,6 +976,9 @@ extern {
     pub fn LLVMAddDereferenceableAttr(Fn: ValueRef, index: c_uint, bytes: uint64_t);
     pub fn LLVMAddFunctionAttribute(Fn: ValueRef, index: c_uint, PA: uint64_t);
     pub fn LLVMAddFunctionAttrString(Fn: ValueRef, index: c_uint, Name: *const c_char);
+    pub fn LLVMAddFunctionAttrStringValue(Fn: ValueRef, index: c_uint,
+                                          Name: *const c_char,
+                                          Value: *const c_char);
     pub fn LLVMRemoveFunctionAttrString(Fn: ValueRef, index: c_uint, Name: *const c_char);
     pub fn LLVMGetFunctionAttr(Fn: ValueRef) -> c_ulonglong;
     pub fn LLVMRemoveFunctionAttr(Fn: ValueRef, val: c_ulonglong);
@@ -1080,10 +1090,7 @@ extern {
     pub fn LLVMDisposeBuilder(Builder: BuilderRef);
 
     /* Execution engine */
-    pub fn LLVMRustCreateJITMemoryManager(morestack: *const ())
-                                          -> RustJITMemoryManagerRef;
-    pub fn LLVMBuildExecutionEngine(Mod: ModuleRef,
-                                    MM: RustJITMemoryManagerRef) -> ExecutionEngineRef;
+    pub fn LLVMBuildExecutionEngine(Mod: ModuleRef) -> ExecutionEngineRef;
     pub fn LLVMDisposeExecutionEngine(EE: ExecutionEngineRef);
     pub fn LLVMExecutionEngineFinalizeObject(EE: ExecutionEngineRef);
     pub fn LLVMRustLoadDynamicLibrary(path: *const c_char) -> Bool;
@@ -1761,7 +1768,9 @@ extern {
                          Dialect: c_uint)
                          -> ValueRef;
 
-    pub static LLVMRustDebugMetadataVersion: u32;
+    pub fn LLVMRustDebugMetadataVersion() -> u32;
+    pub fn LLVMVersionMajor() -> u32;
+    pub fn LLVMVersionMinor() -> u32;
 
     pub fn LLVMRustAddModuleFlag(M: ModuleRef,
                                  name: *const c_char,
@@ -1914,6 +1923,7 @@ extern {
                                            VarInfo: DIVariable,
                                            AddrOps: *const i64,
                                            AddrOpsCount: c_uint,
+                                           DL: ValueRef,
                                            InsertAtEnd: BasicBlockRef)
                                            -> ValueRef;
 
@@ -1922,6 +1932,7 @@ extern {
                                             VarInfo: DIVariable,
                                             AddrOps: *const i64,
                                             AddrOpsCount: c_uint,
+                                            DL: ValueRef,
                                             InsertBefore: ValueRef)
                                             -> ValueRef;
 
@@ -2029,7 +2040,6 @@ extern {
                                        Level: CodeGenOptLevel,
                                        EnableSegstk: bool,
                                        UseSoftFP: bool,
-                                       NoFramePointerElim: bool,
                                        PositionIndependentExecutable: bool,
                                        FunctionSections: bool,
                                        DataSections: bool) -> TargetMachineRef;
@@ -2040,6 +2050,11 @@ extern {
     pub fn LLVMRustAddBuilderLibraryInfo(PMB: PassManagerBuilderRef,
                                          M: ModuleRef,
                                          DisableSimplifyLibCalls: bool);
+    pub fn LLVMRustConfigurePassManagerBuilder(PMB: PassManagerBuilderRef,
+                                               OptLevel: CodeGenOptLevel,
+                                               MergeFunctions: bool,
+                                               SLPVectorize: bool,
+                                               LoopVectorize: bool);
     pub fn LLVMRustAddLibraryInfo(PM: PassManagerRef, M: ModuleRef,
                                   DisableSimplifyLibCalls: bool);
     pub fn LLVMRustRunFunctionPassManager(PM: PassManagerRef, M: ModuleRef);
@@ -2075,7 +2090,8 @@ extern {
     pub fn LLVMRustArchiveIteratorFree(AIR: ArchiveIteratorRef);
     pub fn LLVMRustDestroyArchive(AR: ArchiveRef);
 
-    pub fn LLVMRustSetDLLExportStorageClass(V: ValueRef);
+    pub fn LLVMRustSetDLLStorageClass(V: ValueRef,
+                                      C: DLLStorageClassTypes);
 
     pub fn LLVMRustGetSectionName(SI: SectionIteratorRef,
                                   data: *mut *const c_char) -> c_int;
@@ -2109,6 +2125,12 @@ extern {
     pub fn LLVMWriteSMDiagnosticToString(d: SMDiagnosticRef, s: RustStringRef);
 }
 
+// LLVM requires symbols from this library, but apparently they're not printed
+// during llvm-config?
+#[cfg(windows)]
+#[link(name = "ole32")]
+extern {}
+
 pub fn SetInstructionCallConv(instr: ValueRef, cc: CallConv) {
     unsafe {
         LLVMSetInstructionCallConv(instr, cc as c_uint);
@@ -2122,6 +2144,12 @@ pub fn SetFunctionCallConv(fn_: ValueRef, cc: CallConv) {
 pub fn SetLinkage(global: ValueRef, link: Linkage) {
     unsafe {
         LLVMSetLinkage(global, link as c_uint);
+    }
+}
+
+pub fn SetDLLStorageClass(global: ValueRef, class: DLLStorageClassTypes) {
+    unsafe {
+        LLVMRustSetDLLStorageClass(global, class);
     }
 }
 

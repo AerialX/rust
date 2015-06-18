@@ -137,7 +137,7 @@ fn gather_move<'a, 'tcx>(bccx: &BorrowckCtxt<'a, 'tcx>,
                                move_info.id, move_info.kind);
         }
         None => {
-            // move from rvalue or unsafe pointer, hence ok
+            // move from rvalue or raw pointer, hence ok
         }
     }
 }
@@ -179,7 +179,7 @@ fn check_and_get_illegal_move_origin<'a, 'tcx>(bccx: &BorrowckCtxt<'a, 'tcx>,
         mc::cat_interior(ref b, mc::InteriorField(_)) |
         mc::cat_interior(ref b, mc::InteriorElement(Kind::Pattern, _)) => {
             match b.ty.sty {
-                ty::ty_struct(did, _) | ty::ty_enum(did, _) => {
+                ty::TyStruct(did, _) | ty::TyEnum(did, _) => {
                     if ty::has_dtor(bccx.tcx, did) {
                         Some(cmt.clone())
                     } else {

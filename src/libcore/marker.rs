@@ -55,7 +55,6 @@ pub trait Sized {
 
 /// Types that can be "unsized" to a dynamically sized type.
 #[unstable(feature = "core")]
-#[cfg(not(stage0))]
 #[lang="unsize"]
 pub trait Unsize<T> {
     // Empty.
@@ -120,11 +119,10 @@ pub trait Unsize<T> {
 /// ```
 ///
 /// The `PointList` `struct` cannot implement `Copy`, because `Vec<T>` is not `Copy`. If we
-/// attempt to derive a `Copy` implementation, we'll get an error.
+/// attempt to derive a `Copy` implementation, we'll get an error:
 ///
 /// ```text
-/// error: the trait `Copy` may not be implemented for this type; field `points` does not implement
-/// `Copy`
+/// the trait `Copy` may not be implemented for this type; field `points` does not implement `Copy`
 /// ```
 ///
 /// ## How can I implement `Copy`?
@@ -359,7 +357,7 @@ macro_rules! impls{
 /// struct is dropped, it may in turn drop one or more instances of
 /// the type `T`, though that may not be apparent from the other
 /// structure of the type itself. This is commonly necessary if the
-/// structure is using an unsafe pointer like `*mut T` whose referent
+/// structure is using a raw pointer like `*mut T` whose referent
 /// may be dropped when the type is dropped, as a `*mut T` is
 /// otherwise not treated as owned.
 ///

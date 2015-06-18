@@ -17,11 +17,11 @@ use std::mem;
 use syntax::abi;
 use syntax::ast;
 use syntax::ast_util;
-use syntax::ast_map;
 use syntax::attr;
 use syntax::attr::AttrMetaMethods;
 use syntax::codemap::Span;
 
+use rustc::ast_map;
 use rustc::middle::stability;
 
 use core;
@@ -61,7 +61,8 @@ impl<'a, 'tcx> RustdocVisitor<'a, 'tcx> {
     }
 
     fn stability(&self, id: ast::NodeId) -> Option<attr::Stability> {
-        self.cx.tcx_opt().and_then(|tcx| stability::lookup(tcx, ast_util::local_def(id)))
+        self.cx.tcx_opt().and_then(
+            |tcx| stability::lookup(tcx, ast_util::local_def(id)).map(|x| x.clone()))
     }
 
     pub fn visit(&mut self, krate: &ast::Crate) {
@@ -123,7 +124,9 @@ impl<'a, 'tcx> RustdocVisitor<'a, 'tcx> {
 
     pub fn visit_fn(&mut self, item: &ast::Item,
                     name: ast::Ident, fd: &ast::FnDecl,
-                    unsafety: &ast::Unsafety, abi: &abi::Abi,
+                    unsafety: &ast::Unsafety,
+                    constness: ast::Constness,
+                    abi: &abi::Abi,
                     gen: &ast::Generics) -> Function {
         debug!("Visiting fn");
         Function {
@@ -136,6 +139,7 @@ impl<'a, 'tcx> RustdocVisitor<'a, 'tcx> {
             whence: item.span,
             generics: gen.clone(),
             unsafety: *unsafety,
+            constness: constness,
             abi: *abi,
         }
     }
@@ -291,8 +295,9 @@ impl<'a, 'tcx> RustdocVisitor<'a, 'tcx> {
                 om.enums.push(self.visit_enum_def(item, name, ed, gen)),
             ast::ItemStruct(ref sd, ref gen) =>
                 om.structs.push(self.visit_struct_def(item, name, &**sd, gen)),
-            ast::ItemFn(ref fd, ref pur, ref abi, ref gen, _) =>
-                om.fns.push(self.visit_fn(item, name, &**fd, pur, abi, gen)),
+            ast::ItemFn(ref fd, ref unsafety, constness, ref abi, ref gen, _) =>
+                om.fns.push(self.visit_fn(item, name, &**fd, unsafety,
+                                          constness, abi, gen)),
             ast::ItemTy(ref ty, ref gen) => {
                 let t = Typedef {
                     ty: ty.clone(),

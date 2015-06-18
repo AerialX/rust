@@ -12,6 +12,7 @@ use std::collections::BTreeMap;
 use std::collections::Bound::{Excluded, Included, Unbounded, self};
 use std::collections::btree_map::Entry::{Occupied, Vacant};
 use std::iter::range_inclusive;
+use std::rc::Rc;
 
 #[test]
 fn test_basic_large() {
@@ -199,6 +200,34 @@ fn test_range() {
 }
 
 #[test]
+fn test_borrow() {
+    // make sure these compile -- using the Borrow trait
+    {
+        let mut map = BTreeMap::new();
+        map.insert("0".to_string(), 1);
+        assert_eq!(map["0"], 1);
+    }
+
+    {
+        let mut map = BTreeMap::new();
+        map.insert(Box::new(0), 1);
+        assert_eq!(map[&0], 1);
+    }
+
+    {
+        let mut map = BTreeMap::new();
+        map.insert(Box::new([0, 1]) as Box<[i32]>, 1);
+        assert_eq!(map[&[0, 1][..]], 1);
+    }
+
+    {
+        let mut map = BTreeMap::new();
+        map.insert(Rc::new(0), 1);
+        assert_eq!(map[&0], 1);
+    }
+}
+
+#[test]
 fn test_entry(){
     let xs = [(1, 10), (2, 20), (3, 30), (4, 40), (5, 50), (6, 60)];
 
@@ -247,6 +276,22 @@ fn test_entry(){
     }
     assert_eq!(map.get(&10).unwrap(), &1000);
     assert_eq!(map.len(), 6);
+}
+
+#[test]
+fn test_extend_ref() {
+    let mut a = BTreeMap::new();
+    a.insert(1, "one");
+    let mut b = BTreeMap::new();
+    b.insert(2, "two");
+    b.insert(3, "three");
+
+    a.extend(&b);
+
+    assert_eq!(a.len(), 3);
+    assert_eq!(a[&1], "one");
+    assert_eq!(a[&2], "two");
+    assert_eq!(a[&3], "three");
 }
 
 mod bench {

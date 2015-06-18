@@ -146,8 +146,17 @@ pub use funcs::bsd43::*;
 #[link(name = "m")]
 extern {}
 
-#[cfg(all(target_env = "musl", not(test)))]
+// When compiling rust with musl, statically include libc.a in liblibc.rlib.
+// A cargo build of the libc crate will therefore automatically pick up the
+// libc.a symbols because liblibc is transitively linked to by the stdlib.
+#[cfg(all(target_env = "musl", not(feature = "cargo-build"), not(test)))]
 #[link(name = "c", kind = "static")]
+extern {}
+
+#[cfg(all(windows, target_env = "msvc"))]
+#[link(name = "kernel32")]
+#[link(name = "shell32")]
+#[link(name = "msvcrt")]
 extern {}
 
 // libnacl provides functions that require a trip through the IRT to work.
@@ -6037,7 +6046,6 @@ pub mod funcs {
         use types::common::c95::{c_void};
         use types::os::common::bsd44::{socklen_t, sockaddr, SOCKET};
         use types::os::arch::c95::c_int;
-        use types::os::arch::posix88::ssize_t;
 
         extern "system" {
             pub fn socket(domain: c_int, ty: c_int, protocol: c_int) -> SOCKET;
@@ -6062,7 +6070,7 @@ pub mod funcs {
                         flags: c_int) -> c_int;
             pub fn recvfrom(socket: SOCKET, buf: *mut c_void, len: c_int,
                             flags: c_int, addr: *mut sockaddr,
-                            addrlen: *mut c_int) -> ssize_t;
+                            addrlen: *mut c_int) -> c_int;
             pub fn sendto(socket: SOCKET, buf: *const c_void, len: c_int,
                           flags: c_int, addr: *const sockaddr,
                           addrlen: c_int) -> c_int;
@@ -6303,8 +6311,8 @@ pub mod funcs {
                                 lpOverlapped: LPOVERLAPPED) -> BOOL;
                 pub fn WriteFile(hFile: HANDLE,
                                  lpBuffer: LPVOID,
-                                 nNumberOfBytesToRead: DWORD,
-                                 lpNumberOfBytesRead: LPDWORD,
+                                 nNumberOfBytesToWrite: DWORD,
+                                 lpNumberOfBytesWritten: LPDWORD,
                                  lpOverlapped: LPOVERLAPPED) -> BOOL;
                 pub fn SetFilePointerEx(hFile: HANDLE,
                                         liDistanceToMove: LARGE_INTEGER,

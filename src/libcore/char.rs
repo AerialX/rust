@@ -74,17 +74,8 @@ pub const MAX: char = '\u{10ffff}';
 /// ```
 /// use std::char;
 ///
-/// let c = char::from_u32(10084); // produces `Some(❤)`
-/// assert_eq!(c, Some('❤'));
-/// ```
-///
-/// An invalid character:
-///
-/// ```
-/// use std::char;
-///
-/// let none = char::from_u32(1114112);
-/// assert_eq!(none, None);
+/// assert_eq!(char::from_u32(0x2764), Some('❤'));
+/// assert_eq!(char::from_u32(0x110000), None); // invalid character
 /// ```
 #[inline]
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -152,10 +143,12 @@ pub trait CharExt {
 }
 
 impl CharExt for char {
+    #[inline]
     fn is_digit(self, radix: u32) -> bool {
         self.to_digit(radix).is_some()
     }
 
+    #[inline]
     fn to_digit(self, radix: u32) -> Option<u32> {
         if radix > 36 {
             panic!("to_digit: radix is too high (maximum 36)");
@@ -170,10 +163,12 @@ impl CharExt for char {
         else { None }
     }
 
+    #[inline]
     fn escape_unicode(self) -> EscapeUnicode {
         EscapeUnicode { c: self, state: EscapeUnicodeState::Backslash }
     }
 
+    #[inline]
     fn escape_default(self) -> EscapeDefault {
         let init_state = match self {
             '\t' => EscapeDefaultState::Backslash('t'),

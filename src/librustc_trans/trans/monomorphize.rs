@@ -17,6 +17,7 @@ use middle::subst;
 use middle::subst::{Subst, Substs};
 use middle::traits;
 use middle::ty_fold::{TypeFolder, TypeFoldable};
+use rustc::ast_map;
 use trans::attributes;
 use trans::base::{trans_enum_variant, push_ctxt, get_item_val};
 use trans::base::trans_fn;
@@ -29,7 +30,6 @@ use util::ppaux::Repr;
 
 use syntax::abi;
 use syntax::ast;
-use syntax::ast_map;
 use syntax::ast_util::local_def;
 use syntax::attr;
 use syntax::codemap::DUMMY_SP;
@@ -60,6 +60,8 @@ pub fn monomorphic_fn<'a, 'tcx>(ccx: &CrateContext<'a, 'tcx>,
     };
 
     let item_ty = ty::lookup_item_type(ccx.tcx(), fn_id).ty;
+
+    debug!("monomorphic_fn about to subst into {}", item_ty.repr(ccx.tcx()));
     let mono_ty = item_ty.subst(ccx.tcx(), psubsts);
 
     match ccx.monomorphized().borrow().get(&hash_id) {
@@ -96,8 +98,6 @@ pub fn monomorphic_fn<'a, 'tcx>(ccx: &CrateContext<'a, 'tcx>,
             return (get_item_val(ccx, fn_id.node), mono_ty, true);
         }
     }
-
-    debug!("monomorphic_fn about to subst into {}", item_ty.repr(ccx.tcx()));
 
     debug!("mono_ty = {} (post-substitution)", mono_ty.repr(ccx.tcx()));
 
@@ -177,7 +177,7 @@ pub fn monomorphic_fn<'a, 'tcx>(ccx: &CrateContext<'a, 'tcx>,
         ast_map::NodeItem(i) => {
             match *i {
               ast::Item {
-                  node: ast::ItemFn(ref decl, _, abi, _, ref body),
+                  node: ast::ItemFn(ref decl, _, _, abi, _, ref body),
                   ..
               } => {
                   let d = mk_lldecl(abi);
@@ -337,7 +337,7 @@ pub fn normalize_associated_type<'tcx,T>(tcx: &ty::ctxt<'tcx>, value: &T) -> T
            result.repr(tcx),
            obligations.repr(tcx));
 
-    let mut fulfill_cx = traits::FulfillmentContext::new();
+    let mut fulfill_cx = traits::FulfillmentContext::new(true);
     for obligation in obligations {
         fulfill_cx.register_predicate_obligation(&infcx, obligation);
     }

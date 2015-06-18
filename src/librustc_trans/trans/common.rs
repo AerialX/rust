@@ -40,6 +40,7 @@ use middle::traits;
 use middle::ty::{self, HasProjectionTypes, Ty};
 use middle::ty_fold;
 use middle::ty_fold::{TypeFolder, TypeFoldable};
+use rustc::ast_map::{PathElem, PathName};
 use util::ppaux::Repr;
 use util::nodemap::{FnvHashMap, NodeMap};
 
@@ -50,7 +51,6 @@ use std::cell::{Cell, RefCell};
 use std::result::Result as StdResult;
 use std::vec::Vec;
 use syntax::ast;
-use syntax::ast_map::{PathElem, PathName};
 use syntax::codemap::{DUMMY_SP, Span};
 use syntax::parse::token::InternedString;
 use syntax::parse::token;
@@ -118,26 +118,16 @@ pub fn erase_regions<'tcx,T>(cx: &ty::ctxt<'tcx>, value: &T) -> T
     }
 }
 
-// Is the type's representation size known at compile time?
+/// Is the type's representation size known at compile time?
 pub fn type_is_sized<'tcx>(tcx: &ty::ctxt<'tcx>, ty: Ty<'tcx>) -> bool {
-    let param_env = ty::empty_parameter_environment(tcx);
-    // FIXME(#4287) This can cause errors due to polymorphic recursion,
-    // a better span should be provided, if available.
-    let err_count = tcx.sess.err_count();
-    let is_sized = ty::type_is_sized(&param_env, DUMMY_SP, ty);
-    // Those errors aren't fatal, but an incorrect result can later
-    // trip over asserts in both rustc's trans and LLVM.
-    if err_count < tcx.sess.err_count() {
-        tcx.sess.abort_if_errors();
-    }
-    is_sized
+    ty::type_is_sized(None, tcx, DUMMY_SP, ty)
 }
 
 pub fn type_is_fat_ptr<'tcx>(cx: &ty::ctxt<'tcx>, ty: Ty<'tcx>) -> bool {
     match ty.sty {
-        ty::ty_ptr(ty::mt{ty, ..}) |
-        ty::ty_rptr(_, ty::mt{ty, ..}) |
-        ty::ty_uniq(ty) => {
+        ty::TyRawPtr(ty::mt{ty, ..}) |
+        ty::TyRef(_, ty::mt{ty, ..}) |
+        ty::TyBox(ty) => {
             !type_is_sized(cx, ty)
         }
         _ => {
@@ -168,10 +158,10 @@ pub fn type_needs_unwind_cleanup<'a, 'tcx>(ccx: &CrateContext<'a, 'tcx>, ty: Ty<
         let mut needs_unwind_cleanup = false;
         ty::maybe_walk_ty(ty, |ty| {
             needs_unwind_cleanup |= match ty.sty {
-                ty::ty_bool | ty::ty_int(_) | ty::ty_uint(_) |
-                ty::ty_float(_) | ty::ty_tup(_) | ty::ty_ptr(_) => false,
+                ty::TyBool | ty::TyInt(_) | ty::TyUint(_) |
+                ty::TyFloat(_) | ty::TyTuple(_) | ty::TyRawPtr(_) => false,
 
-                ty::ty_enum(did, substs) =>
+                ty::TyEnum(did, substs) =>
                     ty::enum_variants(tcx, did).iter().any(|v|
                         v.args.iter().any(|&aty| {
                             let t = aty.subst(tcx, substs);
@@ -228,7 +218,7 @@ fn type_needs_drop_given_env<'a,'tcx>(cx: &ty::ctxt<'tcx>,
 
 fn type_is_newtype_immediate<'a, 'tcx>(ccx: &CrateContext<'a, 'tcx>, ty: Ty<'tcx>) -> bool {
     match ty.sty {
-        ty::ty_struct(def_id, substs) => {
+        ty::TyStruct(def_id, substs) => {
             let fields = ty::lookup_struct_fields(ccx.tcx(), def_id);
             fields.len() == 1 && {
                 let ty = ty::lookup_field_type(ccx.tcx(), def_id, fields[0].id, substs);
@@ -256,8 +246,8 @@ pub fn type_is_immediate<'a, 'tcx>(ccx: &CrateContext<'a, 'tcx>, ty: Ty<'tcx>) -
         return false;
     }
     match ty.sty {
-        ty::ty_struct(..) | ty::ty_enum(..) | ty::ty_tup(..) | ty::ty_vec(_, Some(_)) |
-        ty::ty_closure(..) => {
+        ty::TyStruct(..) | ty::TyEnum(..) | ty::TyTuple(..) | ty::TyArray(_, _) |
+        ty::TyClosure(..) => {
             let llty = sizing_type_of(ccx, ty);
             llsize_of_alloc(ccx, llty) <= llsize_of_alloc(ccx, ccx.int_type())
         }
@@ -919,12 +909,6 @@ pub fn const_get_elt(cx: &CrateContext, v: ValueRef, us: &[c_uint])
     }
 }
 
-pub fn is_const(v: ValueRef) -> bool {
-    unsafe {
-        llvm::LLVMIsConstant(v) == True
-    }
-}
-
 pub fn const_to_int(v: ValueRef) -> i64 {
     unsafe {
         llvm::LLVMConstIntGetSExtValue(v)
@@ -1016,7 +1000,8 @@ pub fn fulfill_obligation<'a, 'tcx>(ccx: &CrateContext<'a, 'tcx>,
         None => { }
     }
 
-    debug!("trans fulfill_obligation: trait_ref={}", trait_ref.repr(ccx.tcx()));
+    debug!("trans fulfill_obligation: trait_ref={} def_id={:?}",
+           trait_ref.repr(ccx.tcx()), trait_ref.def_id());
 
     ty::populate_implementations_for_trait_if_necessary(tcx, trait_ref.def_id());
     let infcx = infer::new_infer_ctxt(tcx);
@@ -1056,8 +1041,8 @@ pub fn fulfill_obligation<'a, 'tcx>(ccx: &CrateContext<'a, 'tcx>,
     // Currently, we use a fulfillment context to completely resolve
     // all nested obligations. This is because they can inform the
     // inference of the impl's type parameters.
-    let mut fulfill_cx = traits::FulfillmentContext::new();
-    let vtable = selection.map_move_nested(|predicate| {
+    let mut fulfill_cx = traits::FulfillmentContext::new(true);
+    let vtable = selection.map(|predicate| {
         fulfill_cx.register_predicate_obligation(&infcx, predicate);
     });
     let vtable = drain_fulfillment_cx_or_panic(span, &infcx, &mut fulfill_cx, &vtable);
@@ -1084,7 +1069,7 @@ pub fn normalize_and_test_predicates<'a, 'tcx>(ccx: &CrateContext<'a, 'tcx>,
     let infcx = infer::new_infer_ctxt(tcx);
     let typer = NormalizingClosureTyper::new(tcx);
     let mut selcx = traits::SelectionContext::new(&infcx, &typer);
-    let mut fulfill_cx = traits::FulfillmentContext::new();
+    let mut fulfill_cx = traits::FulfillmentContext::new(false);
     let cause = traits::ObligationCause::dummy();
     let traits::Normalized { value: predicates, obligations } =
         traits::normalize(&mut selcx, cause.clone(), &predicates);

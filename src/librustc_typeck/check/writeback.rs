@@ -41,7 +41,6 @@ pub fn resolve_type_vars_in_expr(fcx: &FnCtxt, e: &ast::Expr) {
     wbcx.visit_expr(e);
     wbcx.visit_upvar_borrow_map();
     wbcx.visit_closures();
-    wbcx.visit_object_cast_map();
 }
 
 pub fn resolve_type_vars_in_fn(fcx: &FnCtxt,
@@ -62,7 +61,6 @@ pub fn resolve_type_vars_in_fn(fcx: &FnCtxt,
     }
     wbcx.visit_upvar_borrow_map();
     wbcx.visit_closures();
-    wbcx.visit_object_cast_map();
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -207,7 +205,7 @@ impl<'cx, 'tcx> WritebackCx<'cx, 'tcx> {
             return;
         }
 
-        for (upvar_id, upvar_capture) in &*self.fcx.inh.upvar_capture_map.borrow() {
+        for (upvar_id, upvar_capture) in self.fcx.inh.upvar_capture_map.borrow().iter() {
             let new_upvar_capture = match *upvar_capture {
                 ty::UpvarCapture::ByValue => ty::UpvarCapture::ByValue,
                 ty::UpvarCapture::ByRef(ref upvar_borrow) => {
@@ -229,34 +227,13 @@ impl<'cx, 'tcx> WritebackCx<'cx, 'tcx> {
             return
         }
 
-        for (def_id, closure_ty) in &*self.fcx.inh.closure_tys.borrow() {
+        for (def_id, closure_ty) in self.fcx.inh.closure_tys.borrow().iter() {
             let closure_ty = self.resolve(closure_ty, ResolvingClosure(*def_id));
             self.fcx.tcx().closure_tys.borrow_mut().insert(*def_id, closure_ty);
         }
 
-        for (def_id, &closure_kind) in &*self.fcx.inh.closure_kinds.borrow() {
+        for (def_id, &closure_kind) in self.fcx.inh.closure_kinds.borrow().iter() {
             self.fcx.tcx().closure_kinds.borrow_mut().insert(*def_id, closure_kind);
-        }
-    }
-
-    fn visit_object_cast_map(&self) {
-        if self.fcx.writeback_errors.get() {
-            return
-        }
-
-        for (&node_id, trait_ref) in self.fcx
-                                            .inh
-                                            .object_cast_map
-                                            .borrow()
-                                            .iter()
-        {
-            let span = ty::expr_span(self.tcx(), node_id);
-            let reason = ResolvingExpr(span);
-            let closure_ty = self.resolve(trait_ref, reason);
-            self.tcx()
-                .object_cast_map
-                .borrow_mut()
-                .insert(node_id, closure_ty);
         }
     }
 

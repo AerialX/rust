@@ -59,10 +59,12 @@ struct Candidate<'tcx> {
 }
 
 enum CandidateKind<'tcx> {
-    InherentImplCandidate(/* Impl */ ast::DefId, subst::Substs<'tcx>),
+    InherentImplCandidate(/* Impl */ ast::DefId, subst::Substs<'tcx>,
+                          /* Normalize obligations */ Vec<traits::PredicateObligation<'tcx>>),
     ObjectCandidate(/* Trait */ ast::DefId, /* method_num */ usize, /* vtable index */ usize),
     ExtensionImplCandidate(/* Impl */ ast::DefId, ty::TraitRef<'tcx>,
-                           subst::Substs<'tcx>, ItemIndex),
+                           subst::Substs<'tcx>, ItemIndex,
+                           /* Normalize obligations */ Vec<traits::PredicateObligation<'tcx>>),
     ClosureCandidate(/* Trait */ ast::DefId, ItemIndex),
     WhereClauseCandidate(ty::PolyTraitRef<'tcx>, ItemIndex),
     ProjectionCandidate(ast::DefId, ItemIndex),
@@ -202,7 +204,7 @@ fn create_steps<'a, 'tcx>(fcx: &FnCtxt<'a, 'tcx>,
     });
 
     match final_ty.sty {
-        ty::ty_vec(elem_ty, Some(_)) => {
+        ty::TyArray(elem_ty, _) => {
             let slice_ty = ty::mk_vec(fcx.tcx(), elem_ty, None);
             steps.push(CandidateStep {
                 self_ty: slice_ty,
@@ -210,7 +212,7 @@ fn create_steps<'a, 'tcx>(fcx: &FnCtxt<'a, 'tcx>,
                 unsize: true
             });
         }
-        ty::ty_err => return None,
+        ty::TyError => return None,
         _ => (),
     }
 
@@ -260,7 +262,7 @@ impl<'a,'tcx> ProbeContext<'a,'tcx> {
 
     fn assemble_inherent_candidates(&mut self) {
         let steps = self.steps.clone();
-        for step in &*steps {
+        for step in steps.iter() {
             self.assemble_probe(step.self_ty);
         }
     }
@@ -270,88 +272,88 @@ impl<'a,'tcx> ProbeContext<'a,'tcx> {
                self_ty.repr(self.tcx()));
 
         match self_ty.sty {
-            ty::ty_trait(box ref data) => {
+            ty::TyTrait(box ref data) => {
                 self.assemble_inherent_candidates_from_object(self_ty, data);
                 self.assemble_inherent_impl_candidates_for_type(data.principal_def_id());
             }
-            ty::ty_enum(did, _) |
-            ty::ty_struct(did, _) |
-            ty::ty_closure(did, _) => {
+            ty::TyEnum(did, _) |
+            ty::TyStruct(did, _) |
+            ty::TyClosure(did, _) => {
                 self.assemble_inherent_impl_candidates_for_type(did);
             }
-            ty::ty_uniq(_) => {
+            ty::TyBox(_) => {
                 if let Some(box_did) = self.tcx().lang_items.owned_box() {
                     self.assemble_inherent_impl_candidates_for_type(box_did);
                 }
             }
-            ty::ty_param(p) => {
+            ty::TyParam(p) => {
                 self.assemble_inherent_candidates_from_param(self_ty, p);
             }
-            ty::ty_char => {
+            ty::TyChar => {
                 let lang_def_id = self.tcx().lang_items.char_impl();
                 self.assemble_inherent_impl_for_primitive(lang_def_id);
             }
-            ty::ty_str => {
+            ty::TyStr => {
                 let lang_def_id = self.tcx().lang_items.str_impl();
                 self.assemble_inherent_impl_for_primitive(lang_def_id);
             }
-            ty::ty_vec(_, None) => {
+            ty::TySlice(_) => {
                 let lang_def_id = self.tcx().lang_items.slice_impl();
                 self.assemble_inherent_impl_for_primitive(lang_def_id);
             }
-            ty::ty_ptr(ty::mt { ty: _, mutbl: ast::MutImmutable }) => {
+            ty::TyRawPtr(ty::mt { ty: _, mutbl: ast::MutImmutable }) => {
                 let lang_def_id = self.tcx().lang_items.const_ptr_impl();
                 self.assemble_inherent_impl_for_primitive(lang_def_id);
             }
-            ty::ty_ptr(ty::mt { ty: _, mutbl: ast::MutMutable }) => {
+            ty::TyRawPtr(ty::mt { ty: _, mutbl: ast::MutMutable }) => {
                 let lang_def_id = self.tcx().lang_items.mut_ptr_impl();
                 self.assemble_inherent_impl_for_primitive(lang_def_id);
             }
-            ty::ty_int(ast::TyI8) => {
+            ty::TyInt(ast::TyI8) => {
                 let lang_def_id = self.tcx().lang_items.i8_impl();
                 self.assemble_inherent_impl_for_primitive(lang_def_id);
             }
-            ty::ty_int(ast::TyI16) => {
+            ty::TyInt(ast::TyI16) => {
                 let lang_def_id = self.tcx().lang_items.i16_impl();
                 self.assemble_inherent_impl_for_primitive(lang_def_id);
             }
-            ty::ty_int(ast::TyI32) => {
+            ty::TyInt(ast::TyI32) => {
                 let lang_def_id = self.tcx().lang_items.i32_impl();
                 self.assemble_inherent_impl_for_primitive(lang_def_id);
             }
-            ty::ty_int(ast::TyI64) => {
+            ty::TyInt(ast::TyI64) => {
                 let lang_def_id = self.tcx().lang_items.i64_impl();
                 self.assemble_inherent_impl_for_primitive(lang_def_id);
             }
-            ty::ty_int(ast::TyIs) => {
+            ty::TyInt(ast::TyIs) => {
                 let lang_def_id = self.tcx().lang_items.isize_impl();
                 self.assemble_inherent_impl_for_primitive(lang_def_id);
             }
-            ty::ty_uint(ast::TyU8) => {
+            ty::TyUint(ast::TyU8) => {
                 let lang_def_id = self.tcx().lang_items.u8_impl();
                 self.assemble_inherent_impl_for_primitive(lang_def_id);
             }
-            ty::ty_uint(ast::TyU16) => {
+            ty::TyUint(ast::TyU16) => {
                 let lang_def_id = self.tcx().lang_items.u16_impl();
                 self.assemble_inherent_impl_for_primitive(lang_def_id);
             }
-            ty::ty_uint(ast::TyU32) => {
+            ty::TyUint(ast::TyU32) => {
                 let lang_def_id = self.tcx().lang_items.u32_impl();
                 self.assemble_inherent_impl_for_primitive(lang_def_id);
             }
-            ty::ty_uint(ast::TyU64) => {
+            ty::TyUint(ast::TyU64) => {
                 let lang_def_id = self.tcx().lang_items.u64_impl();
                 self.assemble_inherent_impl_for_primitive(lang_def_id);
             }
-            ty::ty_uint(ast::TyUs) => {
+            ty::TyUint(ast::TyUs) => {
                 let lang_def_id = self.tcx().lang_items.usize_impl();
                 self.assemble_inherent_impl_for_primitive(lang_def_id);
             }
-            ty::ty_float(ast::TyF32) => {
+            ty::TyFloat(ast::TyF32) => {
                 let lang_def_id = self.tcx().lang_items.f32_impl();
                 self.assemble_inherent_impl_for_primitive(lang_def_id);
             }
-            ty::ty_float(ast::TyF64) => {
+            ty::TyFloat(ast::TyF64) => {
                 let lang_def_id = self.tcx().lang_items.f64_impl();
                 self.assemble_inherent_impl_for_primitive(lang_def_id);
             }
@@ -374,7 +376,7 @@ impl<'a,'tcx> ProbeContext<'a,'tcx> {
         ty::populate_inherent_implementations_for_type_if_necessary(self.tcx(), def_id);
 
         if let Some(impl_infos) = self.tcx().inherent_impls.borrow().get(&def_id) {
-            for &impl_def_id in &***impl_infos {
+            for &impl_def_id in impl_infos.iter() {
                 self.assemble_inherent_impl_probe(impl_def_id);
             }
         }
@@ -398,22 +400,30 @@ impl<'a,'tcx> ProbeContext<'a,'tcx> {
         }
 
         let (impl_ty, impl_substs) = self.impl_ty_and_substs(impl_def_id);
-        let impl_ty = self.fcx.instantiate_type_scheme(self.span, &impl_substs, &impl_ty);
+        let impl_ty = impl_ty.subst(self.tcx(), &impl_substs);
 
         // Determine the receiver type that the method itself expects.
-        let xform_self_ty =
-            self.xform_self_ty(&item, impl_ty, &impl_substs);
+        let xform_self_ty = self.xform_self_ty(&item, impl_ty, &impl_substs);
+
+        // We can't use normalize_associated_types_in as it will pollute the
+        // fcx's fulfillment context after this probe is over.
+        let cause = traits::ObligationCause::misc(self.span, self.fcx.body_id);
+        let mut selcx = &mut traits::SelectionContext::new(self.fcx.infcx(), self.fcx);
+        let traits::Normalized { value: xform_self_ty, obligations } =
+            traits::normalize(selcx, cause, &xform_self_ty);
+        debug!("assemble_inherent_impl_probe: xform_self_ty = {:?}",
+               xform_self_ty.repr(self.tcx()));
 
         self.inherent_candidates.push(Candidate {
             xform_self_ty: xform_self_ty,
             item: item,
-            kind: InherentImplCandidate(impl_def_id, impl_substs)
+            kind: InherentImplCandidate(impl_def_id, impl_substs, obligations)
         });
     }
 
     fn assemble_inherent_candidates_from_object(&mut self,
                                                 self_ty: Ty<'tcx>,
-                                                data: &ty::TyTrait<'tcx>) {
+                                                data: &ty::TraitTy<'tcx>) {
         debug!("assemble_inherent_candidates_from_object(self_ty={})",
                self_ty.repr(self.tcx()));
 
@@ -460,7 +470,7 @@ impl<'a,'tcx> ProbeContext<'a,'tcx> {
                 match *predicate {
                     ty::Predicate::Trait(ref trait_predicate) => {
                         match trait_predicate.0.trait_ref.self_ty().sty {
-                            ty::ty_param(ref p) if *p == param_ty => {
+                            ty::TyParam(ref p) if *p == param_ty => {
                                 Some(trait_predicate.to_poly_trait_ref())
                             }
                             _ => None
@@ -653,12 +663,24 @@ impl<'a,'tcx> ProbeContext<'a,'tcx> {
                                    impl_trait_ref.self_ty(),
                                    impl_trait_ref.substs);
 
+            // Normalize the receiver. We can't use normalize_associated_types_in
+            // as it will pollute the fcx's fulfillment context after this probe
+            // is over.
+            let cause = traits::ObligationCause::misc(self.span, self.fcx.body_id);
+            let mut selcx = &mut traits::SelectionContext::new(self.fcx.infcx(), self.fcx);
+            let traits::Normalized { value: xform_self_ty, obligations } =
+                traits::normalize(selcx, cause, &xform_self_ty);
+
             debug!("xform_self_ty={}", xform_self_ty.repr(self.tcx()));
 
             self.extension_candidates.push(Candidate {
                 xform_self_ty: xform_self_ty,
                 item: item.clone(),
-                kind: ExtensionImplCandidate(impl_def_id, impl_trait_ref, impl_substs, item_index)
+                kind: ExtensionImplCandidate(impl_def_id,
+                                             impl_trait_ref,
+                                             impl_substs,
+                                             item_index,
+                                             obligations)
             });
         });
     }
@@ -700,9 +722,9 @@ impl<'a,'tcx> ProbeContext<'a,'tcx> {
         // Check if there is an unboxed-closure self-type in the list of receivers.
         // If so, add "synthetic impls".
         let steps = self.steps.clone();
-        for step in &*steps {
+        for step in steps.iter() {
             let closure_def_id = match step.self_ty.sty {
-                ty::ty_closure(a, _) => a,
+                ty::TyClosure(a, _) => a,
                 _ => continue,
             };
 
@@ -754,12 +776,12 @@ impl<'a,'tcx> ProbeContext<'a,'tcx> {
                item.repr(self.tcx()),
                item_index);
 
-        for step in &*self.steps {
+        for step in self.steps.iter() {
             debug!("assemble_projection_candidates: step={}",
                    step.repr(self.tcx()));
 
             let projection_trait_ref = match step.self_ty.sty {
-                ty::ty_projection(ref data) => &data.trait_ref,
+                ty::TyProjection(ref data) => &data.trait_ref,
                 _ => continue,
             };
 
@@ -924,7 +946,7 @@ impl<'a,'tcx> ProbeContext<'a,'tcx> {
             pick.autoderefs = step.autoderefs;
 
             // Insert a `&*` or `&mut *` if this is a reference type:
-            if let ty::ty_rptr(_, mt) = step.self_ty.sty {
+            if let ty::TyRef(_, mt) = step.self_ty.sty {
                 pick.autoderefs += 1;
                 pick.autoref = Some(mt.mutbl);
             }
@@ -1026,8 +1048,8 @@ impl<'a,'tcx> ProbeContext<'a,'tcx> {
             // match as well (or at least may match, sometimes we
             // don't have enough information to fully evaluate).
             match probe.kind {
-                InherentImplCandidate(impl_def_id, ref substs) |
-                ExtensionImplCandidate(impl_def_id, _, ref substs, _) => {
+                InherentImplCandidate(impl_def_id, ref substs, ref ref_obligations) |
+                ExtensionImplCandidate(impl_def_id, _, ref substs, _, ref ref_obligations) => {
                     let selcx = &mut traits::SelectionContext::new(self.infcx(), self.fcx);
                     let cause = traits::ObligationCause::misc(self.span, self.fcx.body_id);
 
@@ -1046,8 +1068,10 @@ impl<'a,'tcx> ProbeContext<'a,'tcx> {
                     debug!("impl_obligations={}", obligations.repr(self.tcx()));
 
                     // Evaluate those obligations to see if they might possibly hold.
-                    obligations.all(|o| selcx.evaluate_obligation(o)) &&
-                        norm_obligations.iter().all(|o| selcx.evaluate_obligation(o))
+                    obligations.iter()
+                        .chain(norm_obligations.iter()).chain(ref_obligations.iter())
+                        .all(|o| selcx.evaluate_obligation(o))
+
                 }
 
                 ProjectionCandidate(..) |
@@ -1281,13 +1305,13 @@ impl<'tcx> Candidate<'tcx> {
         Pick {
             item: self.item.clone(),
             kind: match self.kind {
-                InherentImplCandidate(def_id, _) => {
+                InherentImplCandidate(def_id, _, _) => {
                     InherentImplPick(def_id)
                 }
                 ObjectCandidate(def_id, item_num, real_index) => {
                     ObjectPick(def_id, item_num, real_index)
                 }
-                ExtensionImplCandidate(def_id, _, _, index) => {
+                ExtensionImplCandidate(def_id, _, _, index, _) => {
                     ExtensionImplPick(def_id, index)
                 }
                 ClosureCandidate(trait_def_id, index) => {
@@ -1315,9 +1339,9 @@ impl<'tcx> Candidate<'tcx> {
 
     fn to_source(&self) -> CandidateSource {
         match self.kind {
-            InherentImplCandidate(def_id, _) => ImplSource(def_id),
+            InherentImplCandidate(def_id, _, _) => ImplSource(def_id),
             ObjectCandidate(def_id, _, _) => TraitSource(def_id),
-            ExtensionImplCandidate(def_id, _, _, _) => ImplSource(def_id),
+            ExtensionImplCandidate(def_id, _, _, _, _) => ImplSource(def_id),
             ClosureCandidate(trait_def_id, _) => TraitSource(trait_def_id),
             WhereClauseCandidate(ref trait_ref, _) => TraitSource(trait_ref.def_id()),
             ProjectionCandidate(trait_def_id, _) => TraitSource(trait_def_id),
@@ -1335,7 +1359,7 @@ impl<'tcx> Candidate<'tcx> {
             ClosureCandidate(trait_def_id, item_num) => {
                 Some((trait_def_id, item_num))
             }
-            ExtensionImplCandidate(_, ref trait_ref, _, item_num) => {
+            ExtensionImplCandidate(_, ref trait_ref, _, item_num, _) => {
                 Some((trait_ref.def_id, item_num))
             }
             WhereClauseCandidate(ref trait_ref, item_num) => {
@@ -1359,13 +1383,14 @@ impl<'tcx> Repr<'tcx> for Candidate<'tcx> {
 impl<'tcx> Repr<'tcx> for CandidateKind<'tcx> {
     fn repr(&self, tcx: &ty::ctxt<'tcx>) -> String {
         match *self {
-            InherentImplCandidate(ref a, ref b) =>
-                format!("InherentImplCandidate({},{})", a.repr(tcx), b.repr(tcx)),
+            InherentImplCandidate(ref a, ref b, ref c) =>
+                format!("InherentImplCandidate({},{},{})", a.repr(tcx), b.repr(tcx),
+                        c.repr(tcx)),
             ObjectCandidate(a, b, c) =>
                 format!("ObjectCandidate({},{},{})", a.repr(tcx), b, c),
-            ExtensionImplCandidate(ref a, ref b, ref c, ref d) =>
-                format!("ExtensionImplCandidate({},{},{},{})", a.repr(tcx), b.repr(tcx),
-                        c.repr(tcx), d),
+            ExtensionImplCandidate(ref a, ref b, ref c, ref d, ref e) =>
+                format!("ExtensionImplCandidate({},{},{},{},{})", a.repr(tcx), b.repr(tcx),
+                        c.repr(tcx), d, e.repr(tcx)),
             ClosureCandidate(ref a, ref b) =>
                 format!("ClosureCandidate({},{})", a.repr(tcx), b),
             WhereClauseCandidate(ref a, ref b) =>

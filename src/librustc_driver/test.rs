@@ -29,8 +29,9 @@ use rustc_typeck::middle::infer::lub::Lub;
 use rustc_typeck::middle::infer::glb::Glb;
 use rustc_typeck::middle::infer::sub::Sub;
 use rustc_typeck::util::ppaux::{ty_to_string, Repr, UserString};
+use rustc::ast_map;
 use rustc::session::{self,config};
-use syntax::{abi, ast, ast_map};
+use syntax::{abi, ast};
 use syntax::codemap;
 use syntax::codemap::{Span, CodeMap, DUMMY_SP};
 use syntax::diagnostic::{Level, RenderSpan, Bug, Fatal, Error, Warning, Note, Help};
@@ -655,7 +656,7 @@ fn glb_bound_free_infer() {
         // `&'_ isize`
         let t_resolve1 = env.infcx.shallow_resolve(t_infer1);
         match t_resolve1.sty {
-            ty::ty_rptr(..) => { }
+            ty::TyRef(..) => { }
             _ => { panic!("t_resolve1={}", t_resolve1.repr(env.infcx.tcx)); }
         }
     })

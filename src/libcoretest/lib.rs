@@ -14,17 +14,21 @@
 #![feature(box_syntax)]
 #![feature(unboxed_closures)]
 #![feature(core)]
+#![feature(const_fn)]
 #![feature(test)]
 #![feature(rand)]
 #![feature(unicode)]
 #![feature(std_misc)]
 #![feature(libc)]
 #![feature(hash)]
-#![feature(debug_builders)]
 #![feature(unique)]
 #![feature(step_by)]
 #![feature(slice_patterns)]
 #![feature(float_from_str_radix)]
+#![feature(cell_extras)]
+#![feature(iter_empty)]
+#![feature(iter_once)]
+#![feature(result_expect)]
 
 extern crate core;
 extern crate test;

@@ -77,7 +77,8 @@ ERR_IDX_GEN = $(RPATH_VAR2_T_$(CFG_BUILD)_H_$(CFG_BUILD)) $(ERR_IDX_GEN_EXE)
 
 D := $(S)src/doc
 
-DOC_TARGETS := trpl style error-index
+# FIXME (#25705) eventually may want to put error-index target back here.
+DOC_TARGETS := trpl style
 COMPILER_DOC_TARGETS :=
 DOC_L10N_TARGETS :=
 
@@ -168,6 +169,7 @@ DOC_TARGETS += doc/not_found.html
 doc/not_found.html: $(D)/not_found.md $(HTML_DEPS) | doc/
 	@$(call E, rustdoc: $@)
 	$(Q)$(RUSTDOC) $(RUSTDOC_HTML_OPTS_NO_CSS) \
+		--markdown-no-toc \
 		--markdown-css http://doc.rust-lang.org/rust.css $<
 
 define DEF_DOC
@@ -264,7 +266,7 @@ endef
 $(foreach crate,$(CRATES),$(eval $(call DEF_LIB_DOC,$(crate))))
 
 COMPILER_DOC_TARGETS := $(CRATES:%=doc/%/index.html)
-ifdef CFG_COMPILER_DOCS
+ifdef CFG_ENABLE_COMPILER_DOCS
   DOC_TARGETS += $(COMPILER_DOC_TARGETS)
 else
   DOC_TARGETS += $(DOC_CRATES:%=doc/%/index.html)

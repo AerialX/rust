@@ -8,17 +8,17 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use ast_map::NodeForeignItem;
 use metadata::csearch;
 use middle::def::DefFn;
 use middle::subst::{Subst, Substs, EnumeratedItems};
-use middle::ty::{TransmuteRestriction, ctxt, ty_bare_fn};
+use middle::ty::{TransmuteRestriction, ctxt, TyBareFn};
 use middle::ty::{self, Ty};
 use util::ppaux::Repr;
 
 use syntax::abi::RustIntrinsic;
 use syntax::ast::DefId;
 use syntax::ast;
-use syntax::ast_map::NodeForeignItem;
 use syntax::codemap::Span;
 use syntax::parse::token;
 use syntax::visit::Visitor;
@@ -54,7 +54,7 @@ struct IntrinsicCheckingVisitor<'a, 'tcx: 'a> {
 impl<'a, 'tcx> IntrinsicCheckingVisitor<'a, 'tcx> {
     fn def_id_is_transmute(&self, def_id: DefId) -> bool {
         let intrinsic = match ty::lookup_item_type(self.tcx, def_id).ty.sty {
-            ty::ty_bare_fn(_, ref bfty) => bfty.abi == RustIntrinsic,
+            ty::TyBareFn(_, ref bfty) => bfty.abi == RustIntrinsic,
             _ => return false
         };
         if def_id.krate == ast::LOCAL_CRATE {
@@ -212,7 +212,7 @@ impl<'a, 'tcx> IntrinsicCheckingVisitor<'a, 'tcx> {
                 debug!("with_each_combination: space={:?}, index={}, param_ty={}",
                        space, index, param_ty.repr(self.tcx));
 
-                if !ty::type_is_sized(param_env, span, param_ty) {
+                if !ty::type_is_sized(Some(param_env), self.tcx, span, param_ty) {
                     debug!("with_each_combination: param_ty is not known to be sized");
 
                     substs.types.get_mut_slice(space)[index] = self.dummy_unsized_ty;
@@ -256,7 +256,7 @@ impl<'a, 'tcx, 'v> Visitor<'v> for IntrinsicCheckingVisitor<'a, 'tcx> {
                 DefFn(did, _) if self.def_id_is_transmute(did) => {
                     let typ = ty::node_id_to_type(self.tcx, expr.id);
                     match typ.sty {
-                        ty_bare_fn(_, ref bare_fn_ty) if bare_fn_ty.abi == RustIntrinsic => {
+                        TyBareFn(_, ref bare_fn_ty) if bare_fn_ty.abi == RustIntrinsic => {
                             if let ty::FnConverging(to) = bare_fn_ty.sig.0.output {
                                 let from = bare_fn_ty.sig.0.inputs[0];
                                 self.check_transmute(expr.span, from, to, expr.id);

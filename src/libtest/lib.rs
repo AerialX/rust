@@ -127,7 +127,7 @@ enum NamePadding {
 
 impl TestDesc {
     fn padded_name(&self, column_count: usize, align: NamePadding) -> String {
-        let mut name = String::from_str(self.name.as_slice());
+        let mut name = String::from(self.name.as_slice());
         let fill = column_count.saturating_sub(name.len());
         let pad = repeat(" ").take(fill).collect::<String>();
         match align {
@@ -625,17 +625,44 @@ impl<T: Write> ConsoleTestState<T> {
     }
 }
 
-pub fn fmt_bench_samples(bs: &BenchSamples) -> String {
-    if bs.mb_s != 0 {
-        format!("{:>9} ns/iter (+/- {}) = {} MB/s",
-             bs.ns_iter_summ.median as usize,
-             (bs.ns_iter_summ.max - bs.ns_iter_summ.min) as usize,
-             bs.mb_s)
-    } else {
-        format!("{:>9} ns/iter (+/- {})",
-             bs.ns_iter_summ.median as usize,
-             (bs.ns_iter_summ.max - bs.ns_iter_summ.min) as usize)
+// Format a number with thousands separators
+fn fmt_thousands_sep(mut n: usize, sep: char) -> String {
+    use std::fmt::Write;
+    let mut output = String::new();
+    let mut first = true;
+    for &pow in &[9, 6, 3, 0] {
+        let base = 10_usize.pow(pow);
+        if pow == 0 || n / base != 0 {
+            if first {
+                output.write_fmt(format_args!("{}", n / base)).unwrap();
+            } else {
+                output.write_fmt(format_args!("{:03}", n / base)).unwrap();
+            }
+            if pow != 0 {
+                output.push(sep);
+            }
+            first = false;
+        }
+        n %= base;
     }
+
+    output
+}
+
+pub fn fmt_bench_samples(bs: &BenchSamples) -> String {
+    use std::fmt::Write;
+    let mut output = String::new();
+
+    let median = bs.ns_iter_summ.median as usize;
+    let deviation = (bs.ns_iter_summ.max - bs.ns_iter_summ.min) as usize;
+
+    output.write_fmt(format_args!("{:>11} ns/iter (+/- {})",
+                     fmt_thousands_sep(median, ','),
+                     fmt_thousands_sep(deviation, ','))).unwrap();
+    if bs.mb_s != 0 {
+        output.write_fmt(format_args!(" = {} MB/s", bs.mb_s)).unwrap();
+    }
+    output
 }
 
 // A simple console test runner
@@ -740,7 +767,7 @@ fn should_sort_failures_before_printing_them() {
 
 fn use_color(opts: &TestOpts) -> bool {
     match opts.color {
-        AutoColor => get_concurrency() == 1 && stdout_isatty(),
+        AutoColor => !opts.nocapture && stdout_isatty(),
         AlwaysColor => true,
         NeverColor => false,
     }
@@ -1396,7 +1423,7 @@ mod tests {
                  "test::parse_ignored_flag".to_string(),
                  "test::sort_tests".to_string());
 
-        for (a, b) in expected.iter().zip(filtered.iter()) {
+        for (a, b) in expected.iter().zip(filtered) {
             assert!(*a == b.desc.name.to_string());
         }
     }

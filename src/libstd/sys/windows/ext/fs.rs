@@ -21,84 +21,91 @@ use sys;
 use sys_common::{AsInnerMut, AsInner};
 
 /// Windows-specific extensions to `OpenOptions`
-#[unstable(feature = "fs_ext", reason = "may require more thought/methods")]
+#[unstable(feature = "open_options_ext",
+           reason = "may require more thought/methods")]
 pub trait OpenOptionsExt {
     /// Overrides the `dwDesiredAccess` argument to the call to `CreateFile`
     /// with the specified value.
-    fn desired_access(&mut self, access: i32) -> &mut Self;
+    fn desired_access(&mut self, access: u32) -> &mut Self;
 
     /// Overrides the `dwCreationDisposition` argument to the call to
     /// `CreateFile` with the specified value.
     ///
     /// This will override any values of the standard `create` flags, for
     /// example.
-    fn creation_disposition(&mut self, val: i32) -> &mut Self;
+    fn creation_disposition(&mut self, val: u32) -> &mut Self;
 
     /// Overrides the `dwFlagsAndAttributes` argument to the call to
     /// `CreateFile` with the specified value.
     ///
     /// This will override any values of the standard flags on the
     /// `OpenOptions` structure.
-    fn flags_and_attributes(&mut self, val: i32) -> &mut Self;
+    fn flags_and_attributes(&mut self, val: u32) -> &mut Self;
 
     /// Overrides the `dwShareMode` argument to the call to `CreateFile` with
     /// the specified value.
     ///
     /// This will override any values of the standard flags on the
     /// `OpenOptions` structure.
-    fn share_mode(&mut self, val: i32) -> &mut Self;
+    fn share_mode(&mut self, val: u32) -> &mut Self;
 }
 
 impl OpenOptionsExt for OpenOptions {
-    fn desired_access(&mut self, access: i32) -> &mut OpenOptions {
+    fn desired_access(&mut self, access: u32) -> &mut OpenOptions {
         self.as_inner_mut().desired_access(access); self
     }
-    fn creation_disposition(&mut self, access: i32) -> &mut OpenOptions {
+    fn creation_disposition(&mut self, access: u32) -> &mut OpenOptions {
         self.as_inner_mut().creation_disposition(access); self
     }
-    fn flags_and_attributes(&mut self, access: i32) -> &mut OpenOptions {
+    fn flags_and_attributes(&mut self, access: u32) -> &mut OpenOptions {
         self.as_inner_mut().flags_and_attributes(access); self
     }
-    fn share_mode(&mut self, access: i32) -> &mut OpenOptions {
+    fn share_mode(&mut self, access: u32) -> &mut OpenOptions {
         self.as_inner_mut().share_mode(access); self
     }
 }
 
 /// Extension methods for `fs::Metadata` to access the raw fields contained
 /// within.
-#[unstable(feature = "metadata_ext", reason = "recently added API")]
+#[stable(feature = "metadata_ext", since = "1.1.0")]
 pub trait MetadataExt {
     /// Returns the value of the `dwFileAttributes` field of this metadata.
     ///
     /// This field contains the file system attribute information for a file
     /// or directory.
+    #[stable(feature = "metadata_ext", since = "1.1.0")]
     fn file_attributes(&self) -> u32;
 
     /// Returns the value of the `ftCreationTime` field of this metadata.
     ///
     /// The returned 64-bit value represents the number of 100-nanosecond
     /// intervals since January 1, 1601 (UTC).
+    #[stable(feature = "metadata_ext", since = "1.1.0")]
     fn creation_time(&self) -> u64;
 
     /// Returns the value of the `ftLastAccessTime` field of this metadata.
     ///
     /// The returned 64-bit value represents the number of 100-nanosecond
     /// intervals since January 1, 1601 (UTC).
+    #[stable(feature = "metadata_ext", since = "1.1.0")]
     fn last_access_time(&self) -> u64;
 
     /// Returns the value of the `ftLastWriteTime` field of this metadata.
     ///
     /// The returned 64-bit value represents the number of 100-nanosecond
     /// intervals since January 1, 1601 (UTC).
+    #[stable(feature = "metadata_ext", since = "1.1.0")]
     fn last_write_time(&self) -> u64;
 
     /// Returns the value of the `nFileSize{High,Low}` fields of this
     /// metadata.
     ///
     /// The returned value does not have meaning for directories.
+    #[stable(feature = "metadata_ext", since = "1.1.0")]
     fn file_size(&self) -> u64;
 }
 
+#[stable(feature = "metadata_ext", since = "1.1.0")]
 impl MetadataExt for Metadata {
     fn file_attributes(&self) -> u32 { self.as_inner().attrs() }
     fn creation_time(&self) -> u64 { self.as_inner().created() }
@@ -122,7 +129,7 @@ impl MetadataExt for Metadata {
 /// # Ok(())
 /// # }
 /// ```
-#[stable(feature = "rust1", since = "1.0.0")]
+#[stable(feature = "symlink", since = "1.1.0")]
 pub fn symlink_file<P: AsRef<Path>, Q: AsRef<Path>>(src: P, dst: Q)
                                                     -> io::Result<()> {
     sys::fs::symlink_inner(src.as_ref(), dst.as_ref(), false)
@@ -143,7 +150,7 @@ pub fn symlink_file<P: AsRef<Path>, Q: AsRef<Path>>(src: P, dst: Q)
 /// # Ok(())
 /// # }
 /// ```
-#[stable(feature = "rust1", since = "1.0.0")]
+#[stable(feature = "symlink", since = "1.1.0")]
 pub fn symlink_dir<P: AsRef<Path>, Q: AsRef<Path>>(src: P, dst: Q)
                                                    -> io::Result<()> {
     sys::fs::symlink_inner(src.as_ref(), dst.as_ref(), true)

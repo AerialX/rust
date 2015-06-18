@@ -85,7 +85,7 @@ fn overlap(selcx: &mut SelectionContext,
     let infcx = selcx.infcx();
     let opt_failing_obligation =
         a_obligations.iter()
-                     .chain(b_obligations.iter())
+                     .chain(&b_obligations)
                      .map(|o| infcx.resolve_type_vars_if_possible(o))
                      .find(|o| !selcx.evaluate_obligation(o));
 
@@ -159,8 +159,8 @@ fn impl_trait_ref_and_oblig<'a,'tcx>(selcx: &mut SelectionContext<'a,'tcx>,
 
     let impl_obligations: Vec<_> =
         impl_obligations.into_iter()
-        .chain(normalization_obligations1.into_iter())
-        .chain(normalization_obligations2.into_iter())
+        .chain(normalization_obligations1)
+        .chain(normalization_obligations2)
         .collect();
 
     (impl_trait_ref, impl_obligations)
@@ -209,7 +209,7 @@ fn orphan_check_trait_ref<'tcx>(tcx: &ty::ctxt<'tcx>,
     // First, create an ordered iterator over all the type parameters to the trait, with the self
     // type appearing first.
     let input_tys = Some(trait_ref.self_ty());
-    let input_tys = input_tys.iter().chain(trait_ref.substs.types.get_slice(TypeSpace).iter());
+    let input_tys = input_tys.iter().chain(trait_ref.substs.types.get_slice(TypeSpace));
 
     // Find the first input type that either references a type parameter OR
     // some local type.
@@ -255,7 +255,7 @@ fn uncovered_tys<'tcx>(tcx: &ty::ctxt<'tcx>,
         vec![]
     } else if fundamental_ty(tcx, ty) {
         ty.walk_shallow()
-          .flat_map(|t| uncovered_tys(tcx, t, infer_is_local).into_iter())
+          .flat_map(|t| uncovered_tys(tcx, t, infer_is_local))
           .collect()
     } else {
         vec![ty]
@@ -265,7 +265,7 @@ fn uncovered_tys<'tcx>(tcx: &ty::ctxt<'tcx>,
 fn is_type_parameter<'tcx>(ty: Ty<'tcx>) -> bool {
     match ty.sty {
         // FIXME(#20590) straighten story about projection types
-        ty::ty_projection(..) | ty::ty_param(..) => true,
+        ty::TyProjection(..) | ty::TyParam(..) => true,
         _ => false,
     }
 }
@@ -279,11 +279,11 @@ fn ty_is_local<'tcx>(tcx: &ty::ctxt<'tcx>, ty: Ty<'tcx>, infer_is_local: InferIs
 fn fundamental_ty<'tcx>(tcx: &ty::ctxt<'tcx>, ty: Ty<'tcx>) -> bool
 {
     match ty.sty {
-        ty::ty_uniq(..) | ty::ty_rptr(..) =>
+        ty::TyBox(..) | ty::TyRef(..) =>
             true,
-        ty::ty_enum(def_id, _) | ty::ty_struct(def_id, _) =>
+        ty::TyEnum(def_id, _) | ty::TyStruct(def_id, _) =>
             ty::has_attr(tcx, def_id, "fundamental"),
-        ty::ty_trait(ref data) =>
+        ty::TyTrait(ref data) =>
             ty::has_attr(tcx, data.principal_def_id(), "fundamental"),
         _ =>
             false
@@ -298,42 +298,43 @@ fn ty_is_local_constructor<'tcx>(tcx: &ty::ctxt<'tcx>,
     debug!("ty_is_local_constructor({})", ty.repr(tcx));
 
     match ty.sty {
-        ty::ty_bool |
-        ty::ty_char |
-        ty::ty_int(..) |
-        ty::ty_uint(..) |
-        ty::ty_float(..) |
-        ty::ty_str(..) |
-        ty::ty_bare_fn(..) |
-        ty::ty_vec(..) |
-        ty::ty_ptr(..) |
-        ty::ty_rptr(..) |
-        ty::ty_tup(..) |
-        ty::ty_param(..) |
-        ty::ty_projection(..) => {
+        ty::TyBool |
+        ty::TyChar |
+        ty::TyInt(..) |
+        ty::TyUint(..) |
+        ty::TyFloat(..) |
+        ty::TyStr(..) |
+        ty::TyBareFn(..) |
+        ty::TyArray(..) |
+        ty::TySlice(..) |
+        ty::TyRawPtr(..) |
+        ty::TyRef(..) |
+        ty::TyTuple(..) |
+        ty::TyParam(..) |
+        ty::TyProjection(..) => {
             false
         }
 
-        ty::ty_infer(..) => {
+        ty::TyInfer(..) => {
             infer_is_local.0
         }
 
-        ty::ty_enum(def_id, _) |
-        ty::ty_struct(def_id, _) => {
+        ty::TyEnum(def_id, _) |
+        ty::TyStruct(def_id, _) => {
             def_id.krate == ast::LOCAL_CRATE
         }
 
-        ty::ty_uniq(_) => { // Box<T>
+        ty::TyBox(_) => { // Box<T>
             let krate = tcx.lang_items.owned_box().map(|d| d.krate);
             krate == Some(ast::LOCAL_CRATE)
         }
 
-        ty::ty_trait(ref tt) => {
+        ty::TyTrait(ref tt) => {
             tt.principal_def_id().krate == ast::LOCAL_CRATE
         }
 
-        ty::ty_closure(..) |
-        ty::ty_err => {
+        ty::TyClosure(..) |
+        ty::TyError => {
             tcx.sess.bug(
                 &format!("ty_is_local invoked on unexpected type: {}",
                         ty.repr(tcx)))

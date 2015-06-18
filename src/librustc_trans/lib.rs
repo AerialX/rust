@@ -30,6 +30,7 @@
 #![feature(box_syntax)]
 #![feature(collections)]
 #![feature(core)]
+#![feature(const_fn)]
 #![feature(libc)]
 #![feature(quote)]
 #![feature(rustc_diagnostic_macros)]
@@ -37,8 +38,8 @@
 #![feature(staged_api)]
 #![feature(unicode)]
 #![feature(path_ext)]
-#![feature(fs)]
 #![feature(path_relative_from)]
+#![feature(std_misc)]
 
 #![allow(trivial_casts)]
 
@@ -74,6 +75,7 @@ pub mod back {
     pub use rustc_back::x86;
     pub use rustc_back::x86_64;
 
+    pub mod linker;
     pub mod link;
     pub mod lto;
     pub mod write;

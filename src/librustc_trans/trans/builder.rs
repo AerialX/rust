@@ -71,7 +71,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 // Pass 2: concat strings for each elt, skipping
                 // forwards over any cycles by advancing to rightmost
                 // occurrence of each element in path.
-                let mut s = String::from_str(".");
+                let mut s = String::from(".");
                 i = 0;
                 while i < len {
                     i = mm[v[i]];
@@ -561,7 +561,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         // we care about.
         if ixs.len() < 16 {
             let mut small_vec = [ C_i32(self.ccx, 0); 16 ];
-            for (small_vec_e, &ix) in small_vec.iter_mut().zip(ixs.iter()) {
+            for (small_vec_e, &ix) in small_vec.iter_mut().zip(ixs) {
                 *small_vec_e = C_i32(self.ccx, ix as i32);
             }
             self.inbounds_gep(base, &small_vec[..ixs.len()])

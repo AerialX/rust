@@ -54,7 +54,7 @@ use vec::Vec;
 /// assert_eq!(months.get(&3), Some(&"Venus"));
 ///
 /// // Print out all months
-/// for (key, value) in months.iter() {
+/// for (key, value) in &months {
 ///     println!("month {} is {}", key, value);
 /// }
 ///
@@ -287,7 +287,7 @@ impl<V> VecMap<V> {
     ///     *value = "x";
     /// }
     ///
-    /// for (key, value) in map.iter() {
+    /// for (key, value) in &map {
     ///     assert_eq!(value, &"x");
     /// }
     /// ```
@@ -825,6 +825,13 @@ impl<V> Extend<(usize, V)> for VecMap<V> {
         for (k, v) in iter {
             self.insert(k, v);
         }
+    }
+}
+
+#[stable(feature = "extend_ref", since = "1.2.0")]
+impl<'a, V: Copy> Extend<(usize, &'a V)> for VecMap<V> {
+    fn extend<I: IntoIterator<Item=(usize, &'a V)>>(&mut self, iter: I) {
+        self.extend(iter.into_iter().map(|(key, &value)| (key, value)));
     }
 }
 

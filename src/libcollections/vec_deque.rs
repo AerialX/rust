@@ -247,7 +247,6 @@ impl<T> VecDeque<T> {
     /// # Examples
     ///
     /// ```
-    /// # #![feature(collections)]
     /// use std::collections::VecDeque;
     ///
     /// let mut buf = VecDeque::new();
@@ -275,7 +274,6 @@ impl<T> VecDeque<T> {
     /// # Examples
     ///
     /// ```
-    /// # #![feature(collections)]
     /// use std::collections::VecDeque;
     ///
     /// let buf: VecDeque<i32> = VecDeque::with_capacity(10);
@@ -299,7 +297,6 @@ impl<T> VecDeque<T> {
     /// # Examples
     ///
     /// ```
-    /// # #![feature(collections)]
     /// use std::collections::VecDeque;
     ///
     /// let mut buf: VecDeque<i32> = vec![1].into_iter().collect();
@@ -321,7 +318,6 @@ impl<T> VecDeque<T> {
     /// # Examples
     ///
     /// ```
-    /// # #![feature(collections)]
     /// use std::collections::VecDeque;
     ///
     /// let mut buf: VecDeque<i32> = vec![1].into_iter().collect();
@@ -508,7 +504,6 @@ impl<T> VecDeque<T> {
     /// # Examples
     ///
     /// ```
-    /// # #![feature(core)]
     /// use std::collections::VecDeque;
     ///
     /// let mut buf = VecDeque::new();
@@ -533,7 +528,6 @@ impl<T> VecDeque<T> {
     /// # Examples
     ///
     /// ```
-    /// # #![feature(core)]
     /// use std::collections::VecDeque;
     ///
     /// let mut buf = VecDeque::new();
@@ -1449,7 +1443,7 @@ impl<T: Clone> VecDeque<T> {
     /// buf.push_back(15);
     /// buf.resize(2, 0);
     /// buf.resize(6, 20);
-    /// for (a, b) in [5, 10, 20, 20, 20, 20].iter().zip(buf.iter()) {
+    /// for (a, b) in [5, 10, 20, 20, 20, 20].iter().zip(&buf) {
     ///     assert_eq!(a, b);
     /// }
     /// ```
@@ -1687,7 +1681,7 @@ impl<'a, T: 'a> ExactSizeIterator for Drain<'a, T> {}
 impl<A: PartialEq> PartialEq for VecDeque<A> {
     fn eq(&self, other: &VecDeque<A>) -> bool {
         self.len() == other.len() &&
-            self.iter().zip(other.iter()).all(|(a, b)| a.eq(b))
+            self.iter().zip(other).all(|(a, b)| a.eq(b))
     }
 }
 
@@ -1791,6 +1785,13 @@ impl<A> Extend<A> for VecDeque<A> {
     }
 }
 
+#[stable(feature = "extend_ref", since = "1.2.0")]
+impl<'a, T: 'a + Copy> Extend<&'a T> for VecDeque<T> {
+    fn extend<I: IntoIterator<Item=&'a T>>(&mut self, iter: I) {
+        self.extend(iter.into_iter().cloned());
+    }
+}
+
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<T: fmt::Debug> fmt::Debug for VecDeque<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -1807,7 +1808,7 @@ impl<T: fmt::Debug> fmt::Debug for VecDeque<T> {
 
 #[cfg(test)]
 mod tests {
-    use core::iter::{Iterator, self};
+    use core::iter::Iterator;
     use core::option::Option::Some;
 
     use test;

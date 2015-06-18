@@ -34,6 +34,7 @@ use session::Session;
 
 use middle::def;
 use middle::ty::{self, Ty};
+use rustc::ast_map::NodeItem;
 
 use std::cell::Cell;
 use std::fs::File;
@@ -41,7 +42,6 @@ use std::path::Path;
 
 use syntax::ast_util;
 use syntax::ast::{self, NodeId, DefId};
-use syntax::ast_map::NodeItem;
 use syntax::codemap::*;
 use syntax::parse::token::{self, get_ident, keywords};
 use syntax::owned_slice::OwnedSlice;
@@ -54,6 +54,15 @@ use super::recorder::{Recorder, FmtStrs};
 
 use util::ppaux;
 
+macro_rules! down_cast_data {
+    ($id:ident, $kind:ident, $this:ident, $sp:expr) => {
+        let $id = if let super::Data::$kind(data) = $id {
+            data
+        } else {
+            $this.sess.span_bug($sp, &format!("unexpected data kind: {:?}", $id));
+        };
+    };
+}
 
 pub struct DumpCsvVisitor<'l, 'tcx: 'l> {
     save_ctxt: SaveContext<'l, 'tcx>,
@@ -138,7 +147,7 @@ impl <'l, 'tcx> DumpCsvVisitor<'l, 'tcx> {
         let mut result: Vec<(Span, String)> = vec!();
 
         let mut segs = vec!();
-        for (i, (seg, span)) in path.segments.iter().zip(spans.iter()).enumerate() {
+        for (i, (seg, span)) in path.segments.iter().zip(&spans).enumerate() {
             segs.push(seg.clone());
             let sub_path = ast::Path{span: *span, // span for the last segment
                                      global: path.global,
@@ -169,7 +178,7 @@ impl <'l, 'tcx> DumpCsvVisitor<'l, 'tcx> {
             };
             self.fmt.sub_mod_ref_str(path.span,
                                      *span,
-                                     &qualname[..],
+                                     &qualname,
                                      self.cur_scope);
         }
     }
@@ -192,7 +201,7 @@ impl <'l, 'tcx> DumpCsvVisitor<'l, 'tcx> {
             };
             self.fmt.sub_mod_ref_str(path.span,
                                      *span,
-                                     &qualname[..],
+                                     &qualname,
                                      self.cur_scope);
         }
     }
@@ -211,7 +220,7 @@ impl <'l, 'tcx> DumpCsvVisitor<'l, 'tcx> {
         let (ref span, ref qualname) = sub_paths[len-2];
         self.fmt.sub_type_ref_str(path.span,
                                   *span,
-                                  &qualname[..]);
+                                  &qualname);
 
         // write the other sub-paths
         if len <= 2 {
@@ -221,7 +230,7 @@ impl <'l, 'tcx> DumpCsvVisitor<'l, 'tcx> {
         for &(ref span, ref qualname) in sub_paths {
             self.fmt.sub_mod_ref_str(path.span,
                                      *span,
-                                     &qualname[..],
+                                     &qualname,
                                      self.cur_scope);
         }
     }
@@ -249,7 +258,7 @@ impl <'l, 'tcx> DumpCsvVisitor<'l, 'tcx> {
         match def {
             def::DefMod(_) |
             def::DefForeignMod(_) => Some(recorder::ModRef),
-            def::DefStruct(_) => Some(recorder::StructRef),
+            def::DefStruct(_) => Some(recorder::TypeRef),
             def::DefTy(..) |
             def::DefAssociatedTy(..) |
             def::DefTrait(_) => Some(recorder::TypeRef),
@@ -293,7 +302,7 @@ impl <'l, 'tcx> DumpCsvVisitor<'l, 'tcx> {
                                     id,
                                     qualname,
                                     &path_to_string(p),
-                                    &typ[..]);
+                                    &typ);
             }
         }
     }
@@ -318,7 +327,7 @@ impl <'l, 'tcx> DumpCsvVisitor<'l, 'tcx> {
                     scope_id = item.id;
                     match item.node {
                         ast::ItemImpl(_, _, _, _, ref ty, _) => {
-                            let mut result = String::from_str("<");
+                            let mut result = String::from("<");
                             result.push_str(&ty_to_string(&**ty));
 
                             match ty::trait_of_item(&self.analysis.ty_cx,
@@ -419,48 +428,31 @@ impl <'l, 'tcx> DumpCsvVisitor<'l, 'tcx> {
                                     id);
     }
 
-    fn process_trait_ref(&mut self,
-                         trait_ref: &ast::TraitRef) {
-        match self.lookup_type_ref(trait_ref.ref_id) {
-            Some(id) => {
-                let sub_span = self.span.sub_span_for_type_name(trait_ref.path.span);
-                self.fmt.ref_str(recorder::TypeRef,
-                                 trait_ref.path.span,
-                                 sub_span,
-                                 id,
-                                 self.cur_scope);
-                visit::walk_path(self, &trait_ref.path);
-            },
-            None => ()
+    fn process_trait_ref(&mut self, trait_ref: &ast::TraitRef) {
+        let trait_ref_data = self.save_ctxt.get_trait_ref_data(trait_ref, self.cur_scope);
+        if let Some(trait_ref_data) = trait_ref_data {
+            self.fmt.ref_str(recorder::TypeRef,
+                             trait_ref.path.span,
+                             Some(trait_ref_data.span),
+                             trait_ref_data.ref_id,
+                             trait_ref_data.scope);
+            visit::walk_path(self, &trait_ref.path);
         }
     }
 
     fn process_struct_field_def(&mut self,
                                 field: &ast::StructField,
-                                qualname: &str,
-                                scope_id: NodeId) {
-        match field.node.kind {
-            ast::NamedField(ident, _) => {
-                let name = get_ident(ident);
-                let qualname = format!("{}::{}", qualname, name);
-                let typ =
-                    ppaux::ty_to_string(
-                        &self.analysis.ty_cx,
-                        *self.analysis.ty_cx.node_types().get(&field.node.id).unwrap());
-                match self.span.sub_span_before_token(field.span, token::Colon) {
-                    Some(sub_span) => self.fmt.field_str(field.span,
-                                                         Some(sub_span),
-                                                         field.node.id,
-                                                         &name[..],
-                                                         &qualname[..],
-                                                         &typ[..],
-                                                         scope_id),
-                    None => self.sess.span_bug(field.span,
-                                               &format!("Could not find sub-span for field {}",
-                                                       qualname)),
-                }
-            },
-            _ => (),
+                                parent_id: NodeId) {
+        let field_data = self.save_ctxt.get_field_data(field, parent_id);
+        if let Some(field_data) = field_data {
+            down_cast_data!(field_data, VariableData, self, field.span);
+            self.fmt.field_str(field.span,
+                               Some(field_data.span),
+                               field_data.id,
+                               &field_data.name,
+                               &field_data.qualname,
+                               &field_data.type_value,
+                               field_data.scope);
         }
     }
 
@@ -476,16 +468,16 @@ impl <'l, 'tcx> DumpCsvVisitor<'l, 'tcx> {
         // the first few to match the number of generics we're looking for.
         let param_sub_spans = self.span.spans_for_ty_params(full_span,
                                                            (generics.ty_params.len() as isize));
-        for (param, param_ss) in generics.ty_params.iter().zip(param_sub_spans.iter()) {
+        for (param, param_ss) in generics.ty_params.iter().zip(param_sub_spans) {
             // Append $id to name to make sure each one is unique
             let name = format!("{}::{}${}",
                                prefix,
-                               escape(self.span.snippet(*param_ss)),
+                               escape(self.span.snippet(param_ss)),
                                id);
             self.fmt.typedef_str(full_span,
-                                 Some(*param_ss),
+                                 Some(param_ss),
                                  param.id,
-                                 &name[..],
+                                 &name,
                                  "");
         }
         self.visit_generics(generics);
@@ -497,19 +489,16 @@ impl <'l, 'tcx> DumpCsvVisitor<'l, 'tcx> {
                   ty_params: &ast::Generics,
                   body: &ast::Block) {
         let fn_data = self.save_ctxt.get_item_data(item);
-        if let super::Data::FunctionData(fn_data) = fn_data {
-            self.fmt.fn_str(item.span,
-                            Some(fn_data.span),
-                            fn_data.id,
-                            &fn_data.qualname,
-                            fn_data.scope);
+        down_cast_data!(fn_data, FunctionData, self, item.span);
+        self.fmt.fn_str(item.span,
+                        Some(fn_data.span),
+                        fn_data.id,
+                        &fn_data.qualname,
+                        fn_data.scope);
 
 
-            self.process_formals(&decl.inputs, &fn_data.qualname);
-            self.process_generic_params(ty_params, item.span, &fn_data.qualname, item.id);
-        } else {
-            unreachable!();
-        }
+        self.process_formals(&decl.inputs, &fn_data.qualname);
+        self.process_generic_params(ty_params, item.span, &fn_data.qualname, item.id);
 
         for arg in &decl.inputs {
             self.visit_ty(&arg.ty);
@@ -528,18 +517,15 @@ impl <'l, 'tcx> DumpCsvVisitor<'l, 'tcx> {
                                     expr: &ast::Expr)
     {
         let var_data = self.save_ctxt.get_item_data(item);
-        if let super::Data::VariableData(var_data) = var_data {
-            self.fmt.static_str(item.span,
-                                Some(var_data.span),
-                                var_data.id,
-                                &var_data.name,
-                                &var_data.qualname,
-                                &var_data.value,
-                                &var_data.type_value,
-                                var_data.scope);
-        } else {
-            unreachable!();
-        }
+        down_cast_data!(var_data, VariableData, self, item.span);
+        self.fmt.static_str(item.span,
+                            Some(var_data.span),
+                            var_data.id,
+                            &var_data.name,
+                            &var_data.qualname,
+                            &var_data.value,
+                            &var_data.type_value,
+                            var_data.scope);
 
         self.visit_ty(&typ);
         self.visit_expr(expr);
@@ -561,7 +547,7 @@ impl <'l, 'tcx> DumpCsvVisitor<'l, 'tcx> {
                             sub_span,
                             id,
                             &get_ident((*ident).clone()),
-                            &qualname[..],
+                            &qualname,
                             &self.span.snippet(expr.span),
                             &ty_to_string(&*typ),
                             self.cur_scope);
@@ -587,40 +573,35 @@ impl <'l, 'tcx> DumpCsvVisitor<'l, 'tcx> {
                             sub_span,
                             item.id,
                             ctor_id,
-                            &qualname[..],
+                            &qualname,
                             self.cur_scope,
-                            &val[..]);
+                            &val);
 
         // fields
         for field in &def.fields {
-            self.process_struct_field_def(field, &qualname[..], item.id);
-            self.visit_ty(&*field.node.ty);
+            self.process_struct_field_def(field, item.id);
+            self.visit_ty(&field.node.ty);
         }
 
-        self.process_generic_params(ty_params, item.span, &qualname[..], item.id);
+        self.process_generic_params(ty_params, item.span, &qualname, item.id);
     }
 
     fn process_enum(&mut self,
                     item: &ast::Item,
                     enum_definition: &ast::EnumDef,
                     ty_params: &ast::Generics) {
-        let enum_name = format!("::{}", self.analysis.ty_cx.map.path_to_string(item.id));
-        let val = self.span.snippet(item.span);
-        match self.span.sub_span_after_keyword(item.span, keywords::Enum) {
-            Some(sub_span) => self.fmt.enum_str(item.span,
-                                                Some(sub_span),
-                                                item.id,
-                                                &enum_name[..],
-                                                self.cur_scope,
-                                                &val[..]),
-            None => self.sess.span_bug(item.span,
-                                       &format!("Could not find subspan for enum {}",
-                                               enum_name)),
-        }
+        let enum_data = self.save_ctxt.get_item_data(item);
+        down_cast_data!(enum_data, EnumData, self, item.span);
+        self.fmt.enum_str(item.span,
+                          Some(enum_data.span),
+                          enum_data.id,
+                          &enum_data.qualname,
+                          enum_data.scope,
+                          &enum_data.value);
+
         for variant in &enum_definition.variants {
-            let name = get_ident(variant.node.name);
-            let name = &name;
-            let mut qualname = enum_name.clone();
+            let name = &get_ident(variant.node.name);
+            let mut qualname = enum_data.qualname.clone();
             qualname.push_str("::");
             qualname.push_str(name);
             let val = self.span.snippet(variant.span);
@@ -631,10 +612,10 @@ impl <'l, 'tcx> DumpCsvVisitor<'l, 'tcx> {
                                                self.span.span_for_first_ident(variant.span),
                                                variant.node.id,
                                                name,
-                                               &qualname[..],
-                                               &enum_name[..],
-                                               &val[..],
-                                               item.id);
+                                               &qualname,
+                                               &enum_data.qualname,
+                                               &val,
+                                               enum_data.id);
                     for arg in args {
                         self.visit_ty(&*arg.ty);
                     }
@@ -644,25 +625,23 @@ impl <'l, 'tcx> DumpCsvVisitor<'l, 'tcx> {
                         Some(node_id) => node_id,
                         None => -1,
                     };
-                    self.fmt.struct_variant_str(
-                        variant.span,
-                        self.span.span_for_first_ident(variant.span),
-                        variant.node.id,
-                        ctor_id,
-                        &qualname[..],
-                        &enum_name[..],
-                        &val[..],
-                        item.id);
+                    self.fmt.struct_variant_str(variant.span,
+                                                self.span.span_for_first_ident(variant.span),
+                                                variant.node.id,
+                                                ctor_id,
+                                                &qualname,
+                                                &enum_data.qualname,
+                                                &val,
+                                                enum_data.id);
 
                     for field in &struct_def.fields {
-                        self.process_struct_field_def(field, &qualname, variant.node.id);
+                        self.process_struct_field_def(field, variant.node.id);
                         self.visit_ty(&*field.node.ty);
                     }
                 }
             }
         }
-
-        self.process_generic_params(ty_params, item.span, &enum_name[..], item.id);
+        self.process_generic_params(ty_params, item.span, &enum_data.qualname, enum_data.id);
     }
 
     fn process_impl(&mut self,
@@ -671,44 +650,35 @@ impl <'l, 'tcx> DumpCsvVisitor<'l, 'tcx> {
                     trait_ref: &Option<ast::TraitRef>,
                     typ: &ast::Ty,
                     impl_items: &[P<ast::ImplItem>]) {
-        let trait_id = trait_ref.as_ref().and_then(|tr| self.lookup_type_ref(tr.ref_id));
-        match typ.node {
-            // Common case impl for a struct or something basic.
-            ast::TyPath(None, ref path) => {
-                let sub_span = self.span.sub_span_for_type_name(path.span);
-                let self_id = self.lookup_type_ref(typ.id).map(|id| {
-                    self.fmt.ref_str(recorder::TypeRef,
-                                     path.span,
-                                     sub_span,
-                                     id,
-                                     self.cur_scope);
-                    id
-                });
-                self.fmt.impl_str(path.span,
-                                  sub_span,
-                                  item.id,
-                                  self_id,
-                                  trait_id,
-                                  self.cur_scope);
-            },
-            _ => {
-                // Less useful case, impl for a compound type.
-                self.visit_ty(&*typ);
-
-                let sub_span = self.span.sub_span_for_type_name(typ.span);
-                self.fmt.impl_str(typ.span,
-                                  sub_span,
-                                  item.id,
-                                  None,
-                                  trait_id,
-                                  self.cur_scope);
+        let impl_data = self.save_ctxt.get_item_data(item);
+        down_cast_data!(impl_data, ImplData, self, item.span);
+        match impl_data.self_ref {
+            Some(ref self_ref) => {
+                self.fmt.ref_str(recorder::TypeRef,
+                                 item.span,
+                                 Some(self_ref.span),
+                                 self_ref.ref_id,
+                                 self_ref.scope);
+            }
+            None => {
+                self.visit_ty(&typ);
             }
         }
-
-        match *trait_ref {
-            Some(ref trait_ref) => self.process_trait_ref(trait_ref),
-            None => (),
+        if let Some(ref trait_ref_data) = impl_data.trait_ref {
+            self.fmt.ref_str(recorder::TypeRef,
+                             item.span,
+                             Some(trait_ref_data.span),
+                             trait_ref_data.ref_id,
+                             trait_ref_data.scope);
+            visit::walk_path(self, &trait_ref.as_ref().unwrap().path);
         }
+
+        self.fmt.impl_str(item.span,
+                          Some(impl_data.span),
+                          impl_data.id,
+                          impl_data.self_ref.map(|data| data.ref_id),
+                          impl_data.trait_ref.map(|data| data.ref_id),
+                          impl_data.scope);
 
         self.process_generic_params(type_parameters, item.span, "", item.id);
         for impl_item in impl_items {
@@ -727,12 +697,12 @@ impl <'l, 'tcx> DumpCsvVisitor<'l, 'tcx> {
         self.fmt.trait_str(item.span,
                            sub_span,
                            item.id,
-                           &qualname[..],
+                           &qualname,
                            self.cur_scope,
-                           &val[..]);
+                           &val);
 
         // super-traits
-        for super_bound in &**trait_refs {
+        for super_bound in trait_refs.iter() {
             let trait_ref = match *super_bound {
                 ast::TraitTyParamBound(ref trait_ref, _) => {
                     trait_ref
@@ -761,29 +731,22 @@ impl <'l, 'tcx> DumpCsvVisitor<'l, 'tcx> {
         }
 
         // walk generics and methods
-        self.process_generic_params(generics, item.span, &qualname[..], item.id);
+        self.process_generic_params(generics, item.span, &qualname, item.id);
         for method in methods {
             self.visit_trait_item(method)
         }
     }
 
     fn process_mod(&mut self,
-                   item: &ast::Item,  // The module in question, represented as an item.
-                   m: &ast::Mod) {
-        let qualname = format!("::{}", self.analysis.ty_cx.map.path_to_string(item.id));
-
-        let cm = self.sess.codemap();
-        let filename = cm.span_to_filename(m.inner);
-
-        let sub_span = self.span.sub_span_after_keyword(item.span, keywords::Mod);
+                   item: &ast::Item) {  // The module in question, represented as an item.
+        let mod_data = self.save_ctxt.get_item_data(item);
+        down_cast_data!(mod_data, ModData, self, item.span);
         self.fmt.mod_str(item.span,
-                         sub_span,
-                         item.id,
-                         &qualname[..],
-                         self.cur_scope,
-                         &filename[..]);
-
-        self.nest(item.id, |v| visit::walk_mod(v, m));
+                         Some(mod_data.span),
+                         mod_data.id,
+                         &mod_data.qualname,
+                         mod_data.scope,
+                         &mod_data.filename);
     }
 
     fn process_path(&mut self,
@@ -813,7 +776,7 @@ impl <'l, 'tcx> DumpCsvVisitor<'l, 'tcx> {
                                                     sub_span,
                                                     def.def_id(),
                                                     self.cur_scope),
-            def::DefStruct(def_id) => self.fmt.ref_str(recorder::StructRef,
+            def::DefStruct(def_id) => self.fmt.ref_str(recorder::TypeRef,
                                                        span,
                                                        sub_span,
                                                        def_id,
@@ -910,44 +873,33 @@ impl <'l, 'tcx> DumpCsvVisitor<'l, 'tcx> {
 
         self.write_sub_paths_truncated(path, false);
 
-        let ty = &ty::expr_ty_adjusted(&self.analysis.ty_cx, ex).sty;
-        let struct_def = match *ty {
-            ty::ty_struct(def_id, _) => {
-                let sub_span = self.span.span_for_last_ident(path.span);
-                self.fmt.ref_str(recorder::StructRef,
-                                 path.span,
-                                 sub_span,
-                                 def_id,
-                                 self.cur_scope);
-                Some(def_id)
-            }
-            _ => None
-        };
+        if let Some(struct_lit_data) = self.save_ctxt.get_expr_data(ex) {
+            down_cast_data!(struct_lit_data, TypeRefData, self, ex.span);
+            self.fmt.ref_str(recorder::TypeRef,
+                             ex.span,
+                             Some(struct_lit_data.span),
+                             struct_lit_data.ref_id,
+                             struct_lit_data.scope);
+            let struct_def = struct_lit_data.ref_id;
 
-        for field in fields {
-            match struct_def {
-                Some(struct_def) => {
-                    let fields = ty::lookup_struct_fields(&self.analysis.ty_cx, struct_def);
-                    for f in &fields {
-                        if generated_code(field.ident.span) {
-                            continue;
-                        }
-                        if f.name == field.ident.node.name {
-                            // We don't really need a sub-span here, but no harm done
-                            let sub_span = self.span.span_for_last_ident(field.ident.span);
-                            self.fmt.ref_str(recorder::VarRef,
-                                             field.ident.span,
-                                             sub_span,
-                                             f.id,
-                                             self.cur_scope);
-                        }
-                    }
+            for field in fields {
+                if generated_code(field.ident.span) {
+                    continue;
                 }
-                None => {}
-            }
 
-            self.visit_expr(&*field.expr)
+                let field_data = self.save_ctxt.get_field_ref_data(field,
+                                                                   struct_def,
+                                                                   self.cur_scope);
+                self.fmt.ref_str(recorder::VarRef,
+                                 field.ident.span,
+                                 Some(field_data.span),
+                                 field_data.ref_id,
+                                 field_data.scope);
+
+                self.visit_expr(&field.expr)
+            }
         }
+
         visit::walk_expr_opt(self, base)
     }
 
@@ -1005,7 +957,7 @@ impl <'l, 'tcx> DumpCsvVisitor<'l, 'tcx> {
                                self.cur_scope);
 
         // walk receiver and args
-        visit::walk_exprs(self, &args[..]);
+        visit::walk_exprs(self, &args);
     }
 
     fn process_pat(&mut self, p:&ast::Pat) {
@@ -1164,10 +1116,10 @@ impl<'l, 'tcx, 'v> Visitor<'v> for DumpCsvVisitor<'l, 'tcx> {
                                           item.id,
                                           cnum,
                                           name,
-                                          &location[..],
+                                          &location,
                                           self.cur_scope);
             }
-            ast::ItemFn(ref decl, _, _, ref ty_params, ref body) =>
+            ast::ItemFn(ref decl, _, _, _, ref ty_params, ref body) =>
                 self.process_fn(item, &**decl, ty_params, &**body),
             ast::ItemStatic(ref typ, _, ref expr) =>
                 self.process_static_or_const_item(item, typ, expr),
@@ -1183,12 +1135,15 @@ impl<'l, 'tcx, 'v> Visitor<'v> for DumpCsvVisitor<'l, 'tcx> {
                 self.process_impl(item,
                                   ty_params,
                                   trait_ref,
-                                  &**typ,
+                                  &typ,
                                   impl_items)
             }
             ast::ItemTrait(_, ref generics, ref trait_refs, ref methods) =>
                 self.process_trait(item, generics, trait_refs, methods),
-            ast::ItemMod(ref m) => self.process_mod(item, m),
+            ast::ItemMod(ref m) => {
+                self.process_mod(item);
+                self.nest(item.id, |v| visit::walk_mod(v, m));
+            }
             ast::ItemTy(ref ty, ref ty_params) => {
                 let qualname = format!("::{}", self.analysis.ty_cx.map.path_to_string(item.id));
                 let value = ty_to_string(&**ty);
@@ -1196,8 +1151,8 @@ impl<'l, 'tcx, 'v> Visitor<'v> for DumpCsvVisitor<'l, 'tcx> {
                 self.fmt.typedef_str(item.span,
                                      sub_span,
                                      item.id,
-                                     &qualname[..],
-                                     &value[..]);
+                                     &qualname,
+                                     &value);
 
                 self.visit_ty(&**ty);
                 self.process_generic_params(ty_params, item.span, &qualname, item.id);
@@ -1208,8 +1163,8 @@ impl<'l, 'tcx, 'v> Visitor<'v> for DumpCsvVisitor<'l, 'tcx> {
     }
 
     fn visit_generics(&mut self, generics: &ast::Generics) {
-        for param in &*generics.ty_params {
-            for bound in &*param.bounds {
+        for param in generics.ty_params.iter() {
+            for bound in param.bounds.iter() {
                 if let ast::TraitTyParamBound(ref trait_ref, _) = *bound {
                     self.process_trait_ref(&trait_ref.trait_ref);
                 }
@@ -1295,30 +1250,20 @@ impl<'l, 'tcx, 'v> Visitor<'v> for DumpCsvVisitor<'l, 'tcx> {
             ast::ExprStruct(ref path, ref fields, ref base) =>
                 self.process_struct_lit(ex, path, fields, base),
             ast::ExprMethodCall(_, _, ref args) => self.process_method_call(ex, args),
-            ast::ExprField(ref sub_ex, ident) => {
+            ast::ExprField(ref sub_ex, _) => {
                 if generated_code(sub_ex.span) {
                     return
                 }
 
-                self.visit_expr(&**sub_ex);
-                let ty = &ty::expr_ty_adjusted(&self.analysis.ty_cx, &**sub_ex).sty;
-                match *ty {
-                    ty::ty_struct(def_id, _) => {
-                        let fields = ty::lookup_struct_fields(&self.analysis.ty_cx, def_id);
-                        for f in &fields {
-                            if f.name == ident.node.name {
-                                let sub_span = self.span.span_for_last_ident(ex.span);
-                                self.fmt.ref_str(recorder::VarRef,
-                                                 ex.span,
-                                                 sub_span,
-                                                 f.id,
-                                                 self.cur_scope);
-                                break;
-                            }
-                        }
-                    }
-                    _ => self.sess.span_bug(ex.span,
-                                            &format!("Expected struct type, found {:?}", ty)),
+                self.visit_expr(&sub_ex);
+
+                if let Some(field_data) = self.save_ctxt.get_expr_data(ex) {
+                    down_cast_data!(field_data, VariableRefData, self, ex.span);
+                    self.fmt.ref_str(recorder::VarRef,
+                                     ex.span,
+                                     Some(field_data.span),
+                                     field_data.ref_id,
+                                     field_data.scope);
                 }
             },
             ast::ExprTupField(ref sub_ex, idx) => {
@@ -1330,7 +1275,7 @@ impl<'l, 'tcx, 'v> Visitor<'v> for DumpCsvVisitor<'l, 'tcx> {
 
                 let ty = &ty::expr_ty_adjusted(&self.analysis.ty_cx, &**sub_ex).sty;
                 match *ty {
-                    ty::ty_struct(def_id, _) => {
+                    ty::TyStruct(def_id, _) => {
                         let fields = ty::lookup_struct_fields(&self.analysis.ty_cx, def_id);
                         for (i, f) in fields.iter().enumerate() {
                             if i == idx.node {
@@ -1344,7 +1289,7 @@ impl<'l, 'tcx, 'v> Visitor<'v> for DumpCsvVisitor<'l, 'tcx> {
                             }
                         }
                     }
-                    ty::ty_tup(_) => {}
+                    ty::TyTuple(_) => {}
                     _ => self.sess.span_bug(ex.span,
                                             &format!("Expected struct or tuple \
                                                       type, found {:?}", ty)),
@@ -1355,9 +1300,9 @@ impl<'l, 'tcx, 'v> Visitor<'v> for DumpCsvVisitor<'l, 'tcx> {
                     return
                 }
 
-                let mut id = String::from_str("$");
+                let mut id = String::from("$");
                 id.push_str(&ex.id.to_string());
-                self.process_formals(&decl.inputs, &id[..]);
+                self.process_formals(&decl.inputs, &id);
 
                 // walk arg and return types
                 for arg in &decl.inputs {
@@ -1417,7 +1362,7 @@ impl<'l, 'tcx, 'v> Visitor<'v> for DumpCsvVisitor<'l, 'tcx> {
                                           Some(p.span),
                                           id,
                                           &path_to_string(p),
-                                          &value[..],
+                                          &value,
                                           "")
                 }
                 def::DefVariant(..) | def::DefTy(..) | def::DefStruct(..) => {
@@ -1475,8 +1420,8 @@ impl<'l, 'tcx, 'v> Visitor<'v> for DumpCsvVisitor<'l, 'tcx> {
                                   sub_span,
                                   id,
                                   &path_to_string(p),
-                                  &value[..],
-                                  &typ[..]);
+                                  &value,
+                                  &typ);
         }
 
         // Just walk the initialiser and type (don't want to walk the pattern again).

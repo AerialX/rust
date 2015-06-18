@@ -164,8 +164,8 @@
 //! provides some helper methods.
 //!
 //! Additionally, the return value of this function is `fmt::Result` which is a
-//! typedef to `Result<(), IoError>` (also known as `IoResult<()>`). Formatting
-//! implementations should ensure that they return errors from `write!`
+//! typedef to `Result<(), std::io::Error>` (also known as `std::io::Result<()>`).
+//! Formatting implementations should ensure that they return errors from `write!`
 //! correctly (propagating errors upward).
 //!
 //! An example of implementing the formatting traits would look
@@ -352,6 +352,10 @@
 //! * `<` - the argument is left-aligned in `width` columns
 //! * `^` - the argument is center-aligned in `width` columns
 //! * `>` - the argument is right-aligned in `width` columns
+//!
+//! Note that alignment may not be implemented by some types. A good way
+//! to ensure padding is applied is to format your input, then use this
+//! resulting string to pad your output.
 //!
 //! ## Sign/#/0
 //!

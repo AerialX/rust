@@ -402,7 +402,7 @@ impl RustcDefaultCalls {
                 &Input::File(ref ifile) => {
                     let path = &(*ifile);
                     let mut v = Vec::new();
-                    metadata::loader::list_file_metadata(sess.target.target.options.is_like_osx,
+                    metadata::loader::list_file_metadata(&sess.target.target,
                                                          path,
                                                          &mut v).unwrap();
                     println!("{}", String::from_utf8(v).unwrap());
@@ -483,10 +483,6 @@ pub fn commit_date_str() -> Option<&'static str> {
     option_env!("CFG_VER_DATE")
 }
 
-pub fn build_date_str() -> Option<&'static str> {
-    option_env!("CFG_BUILD_DATE")
-}
-
 /// Prints version information and returns None on success or an error
 /// message on panic.
 pub fn version(binary: &str, matches: &getopts::Matches) {
@@ -498,7 +494,6 @@ pub fn version(binary: &str, matches: &getopts::Matches) {
         println!("binary: {}", binary);
         println!("commit-hash: {}", unw(commit_hash_str()));
         println!("commit-date: {}", unw(commit_date_str()));
-        println!("build-date: {}", unw(build_date_str()));
         println!("host: {}", config::host_triple());
         println!("release: {}", unw(release_str()));
     }
@@ -571,7 +566,7 @@ Available lint options:
     let plugin_groups = sort_lint_groups(plugin_groups);
     let builtin_groups = sort_lint_groups(builtin_groups);
 
-    let max_name_len = plugin.iter().chain(builtin.iter())
+    let max_name_len = plugin.iter().chain(&builtin)
         .map(|&s| s.name.chars().count())
         .max().unwrap_or(0);
     let padded = |x: &str| {
@@ -598,7 +593,7 @@ Available lint options:
 
 
 
-    let max_name_len = plugin_groups.iter().chain(builtin_groups.iter())
+    let max_name_len = plugin_groups.iter().chain(&builtin_groups)
         .map(|&(s, _)| s.chars().count())
         .max().unwrap_or(0);
     let padded = |x: &str| {
@@ -831,10 +826,13 @@ pub fn monitor<F:FnOnce()+Send+'static>(f: F) {
                     "the compiler unexpectedly panicked. this is a bug.".to_string(),
                     format!("we would appreciate a bug report: {}",
                             BUG_REPORT_URL),
-                    "run with `RUST_BACKTRACE=1` for a backtrace".to_string(),
                 ];
                 for note in &xs {
                     emitter.emit(None, &note[..], None, diagnostic::Note)
+                }
+                if let None = env::var_os("RUST_BACKTRACE") {
+                    emitter.emit(None, "run with `RUST_BACKTRACE=1` for a backtrace",
+                                 None, diagnostic::Note);
                 }
 
                 println!("{}", str::from_utf8(&data.lock().unwrap()).unwrap());

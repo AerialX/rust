@@ -48,7 +48,6 @@ mod cmath {
         pub fn fmod(a: c_double, b: c_double) -> c_double;
         pub fn nextafter(x: c_double, y: c_double) -> c_double;
         pub fn frexp(n: c_double, value: &mut c_int) -> c_double;
-        pub fn hypot(x: c_double, y: c_double) -> c_double;
         pub fn ldexp(x: c_double, n: c_int) -> c_double;
         pub fn logb(n: c_double) -> c_double;
         pub fn log1p(n: c_double) -> c_double;
@@ -69,11 +68,11 @@ mod cmath {
         pub fn y1(n: c_double) -> c_double;
         pub fn yn(i: c_int, n: c_double) -> c_double;
 
-        #[cfg(unix)]
+        #[cfg_attr(all(windows, target_env = "msvc"), link_name = "__lgamma_r")]
         pub fn lgamma_r(n: c_double, sign: &mut c_int) -> c_double;
-        #[cfg(windows)]
-        #[link_name="__lgamma_r"]
-        pub fn lgamma_r(n: c_double, sign: &mut c_int) -> c_double;
+
+        #[cfg_attr(all(windows, target_env = "msvc"), link_name = "_hypot")]
+        pub fn hypot(x: c_double, y: c_double) -> c_double;
     }
 }
 
@@ -637,6 +636,8 @@ impl f64 {
     ///
     /// assert_eq!(x.max(y), y);
     /// ```
+    ///
+    /// If one of the arguments is NaN, then the other argument is returned.
     #[stable(feature = "rust1", since = "1.0.0")]
     #[inline]
     pub fn max(self, other: f64) -> f64 {
@@ -651,6 +652,8 @@ impl f64 {
     ///
     /// assert_eq!(x.min(y), x);
     /// ```
+    ///
+    /// If one of the arguments is NaN, then the other argument is returned.
     #[stable(feature = "rust1", since = "1.0.0")]
     #[inline]
     pub fn min(self, other: f64) -> f64 {

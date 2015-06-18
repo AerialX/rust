@@ -49,6 +49,7 @@ use self::ParentLink::*;
 use self::ModuleKind::*;
 use self::FallbackChecks::*;
 
+use rustc::ast_map;
 use rustc::session::Session;
 use rustc::lint;
 use rustc::metadata::csearch;
@@ -80,7 +81,6 @@ use syntax::ast::{TyPath, TyPtr};
 use syntax::ast::{TyRptr, TyStr, TyUs, TyU8, TyU16, TyU32, TyU64, TyUint};
 use syntax::ast::TypeImplItem;
 use syntax::ast;
-use syntax::ast_map;
 use syntax::ast_util::{local_def, walk_pat};
 use syntax::attr::AttrMetaMethods;
 use syntax::ext::mtwt;
@@ -215,7 +215,7 @@ impl<'a, 'v, 'tcx> Visitor<'v> for Resolver<'a, 'tcx> {
         // `visit::walk_variant` without the discriminant expression.
         match variant.node.kind {
             ast::TupleVariantKind(ref variant_arguments) => {
-                for variant_argument in variant_arguments.iter() {
+                for variant_argument in variant_arguments {
                     self.visit_ty(&*variant_argument.ty);
                 }
             }
@@ -245,7 +245,7 @@ impl<'a, 'v, 'tcx> Visitor<'v> for Resolver<'a, 'tcx> {
                 _: Span,
                 node_id: NodeId) {
         let rib_kind = match function_kind {
-            visit::FkItemFn(_, generics, _, _, _) => {
+            visit::FkItemFn(_, generics, _, _, _, _) => {
                 self.visit_generics(generics);
                 ItemRibKind
             }
@@ -1574,7 +1574,7 @@ impl<'a, 'tcx> Resolver<'a, 'tcx> {
         // Descend into children and anonymous children.
         build_reduced_graph::populate_module_if_necessary(self, &module_);
 
-        for (_, child_node) in &*module_.children.borrow() {
+        for (_, child_node) in module_.children.borrow().iter() {
             match child_node.get_module_if_available() {
                 None => {
                     // Continue.
@@ -1585,7 +1585,7 @@ impl<'a, 'tcx> Resolver<'a, 'tcx> {
             }
         }
 
-        for (_, module_) in &*module_.anonymous_children.borrow() {
+        for (_, module_) in module_.anonymous_children.borrow().iter() {
             self.report_unresolved_imports(module_.clone());
         }
     }
@@ -1809,7 +1809,7 @@ impl<'a, 'tcx> Resolver<'a, 'tcx> {
                                                                ItemRibKind),
                                              |this| visit::walk_item(this, item));
             }
-            ItemFn(_, _, _, ref generics, _) => {
+            ItemFn(_, _, _, _, ref generics, _) => {
                 self.with_type_parameter_rib(HasTypeParameters(generics,
                                                                FnSpace,
                                                                ItemRibKind),
@@ -2039,7 +2039,7 @@ impl<'a, 'tcx> Resolver<'a, 'tcx> {
     }
 
     fn resolve_generics(&mut self, generics: &Generics) {
-        for type_parameter in &*generics.ty_params {
+        for type_parameter in generics.ty_params.iter() {
             self.check_if_primitive_type_name(type_parameter.ident.name, type_parameter.span);
         }
         for predicate in &generics.where_clause.predicates {
@@ -3206,14 +3206,11 @@ impl<'a, 'tcx> Resolver<'a, 'tcx> {
         NoSuggestion
     }
 
-    fn find_best_match_for_name(&mut self, name: &str, max_distance: usize)
-                                -> Option<String> {
-        let this = &mut *self;
-
+    fn find_best_match_for_name(&mut self, name: &str) -> Option<String> {
         let mut maybes: Vec<token::InternedString> = Vec::new();
         let mut values: Vec<usize> = Vec::new();
 
-        for rib in this.value_ribs.iter().rev() {
+        for rib in self.value_ribs.iter().rev() {
             for (&k, _) in &rib.bindings {
                 maybes.push(token::get_name(k));
                 values.push(usize::MAX);
@@ -3229,9 +3226,12 @@ impl<'a, 'tcx> Resolver<'a, 'tcx> {
             }
         }
 
+        // As a loose rule to avoid obviously incorrect suggestions, clamp the
+        // maximum edit distance we will accept for a suggestion to one third of
+        // the typo'd name's length.
+        let max_distance = std::cmp::max(name.len(), 3) / 3;
+
         if !values.is_empty() &&
-            values[smallest] != usize::MAX &&
-            values[smallest] < name.len() + 2 &&
             values[smallest] <= max_distance &&
             name != &maybes[smallest][..] {
 
@@ -3357,7 +3357,7 @@ impl<'a, 'tcx> Resolver<'a, 'tcx> {
                                     NoSuggestion => {
                                         // limit search to 5 to reduce the number
                                         // of stupid suggestions
-                                        self.find_best_match_for_name(&path_name, 5)
+                                        self.find_best_match_for_name(&path_name)
                                                             .map_or("".to_string(),
                                                                     |x| format!("`{}`", x))
                                     }
@@ -3502,7 +3502,7 @@ impl<'a, 'tcx> Resolver<'a, 'tcx> {
             build_reduced_graph::populate_module_if_necessary(self, &search_module);
 
             {
-                for (_, child_names) in &*search_module.children.borrow() {
+                for (_, child_names) in search_module.children.borrow().iter() {
                     let def = match child_names.def_for_namespace(TypeNS) {
                         Some(def) => def,
                         None => continue
@@ -3518,7 +3518,7 @@ impl<'a, 'tcx> Resolver<'a, 'tcx> {
             }
 
             // Look for imports.
-            for (_, import) in &*search_module.import_resolutions.borrow() {
+            for (_, import) in search_module.import_resolutions.borrow().iter() {
                 let target = match import.target_for_namespace(TypeNS) {
                     None => continue,
                     Some(target) => target,
@@ -3591,13 +3591,13 @@ impl<'a, 'tcx> Resolver<'a, 'tcx> {
 
         debug!("Children:");
         build_reduced_graph::populate_module_if_necessary(self, &module_);
-        for (&name, _) in &*module_.children.borrow() {
+        for (&name, _) in module_.children.borrow().iter() {
             debug!("* {}", token::get_name(name));
         }
 
         debug!("Import resolutions:");
         let import_resolutions = module_.import_resolutions.borrow();
-        for (&name, import_resolution) in &*import_resolutions {
+        for (&name, import_resolution) in import_resolutions.iter() {
             let value_repr;
             match import_resolution.target_for_namespace(ValueNS) {
                 None => { value_repr = "".to_string(); }
@@ -3723,7 +3723,4 @@ pub fn resolve_crate<'a, 'tcx>(session: &'a Session,
     }
 }
 
-#[cfg(stage0)]
-__build_diagnostic_array! { DIAGNOSTICS }
-#[cfg(not(stage0))]
 __build_diagnostic_array! { librustc_resolve, DIAGNOSTICS }

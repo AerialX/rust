@@ -20,6 +20,6 @@ mod Y {
 
 static foo: *const Y::X = Y::foo(Y::x as *const Y::X);
 //~^ ERROR the trait `core::marker::Sync` is not implemented for the type
-//~| ERROR function calls in statics are limited to struct and enum constructors
+//~| ERROR E0015
 
 fn main() {}

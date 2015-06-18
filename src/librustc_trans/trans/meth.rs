@@ -18,6 +18,7 @@ use middle::subst::VecPerParamSpace;
 use middle::subst;
 use middle::traits;
 use middle::ty::ClosureTyper;
+use rustc::ast_map;
 use trans::base::*;
 use trans::build::*;
 use trans::callee::*;
@@ -42,7 +43,7 @@ use util::ppaux::Repr;
 
 use syntax::abi::{Rust, RustCall};
 use syntax::parse::token;
-use syntax::{ast, ast_map, attr, visit};
+use syntax::{ast, attr, visit};
 use syntax::codemap::DUMMY_SP;
 use syntax::ptr::P;
 
@@ -118,6 +119,7 @@ pub fn trans_method_callee<'blk, 'tcx>(bcx: Block<'blk, 'tcx>,
     match origin {
         ty::MethodStatic(did) |
         ty::MethodStaticClosure(did) => {
+            debug!("trans_method_callee: static, {:?}", did);
             Callee {
                 bcx: bcx,
                 data: Fn(callee::trans_fn_ref(bcx.ccx(),
@@ -134,9 +136,11 @@ pub fn trans_method_callee<'blk, 'tcx>(bcx: Block<'blk, 'tcx>,
         }) => {
             let trait_ref = ty::Binder(bcx.monomorphize(trait_ref));
             let span = bcx.tcx().map.span(method_call.expr_id);
-            debug!("method_call={:?} trait_ref={}",
+            debug!("method_call={:?} trait_ref={} trait_ref id={:?} substs={:?}",
                    method_call,
-                   trait_ref.repr(bcx.tcx()));
+                   trait_ref.repr(bcx.tcx()),
+                   trait_ref.0.def_id,
+                   trait_ref.0.substs);
             let origin = fulfill_obligation(bcx.ccx(),
                                             span,
                                             trait_ref.clone());
@@ -489,7 +493,7 @@ pub fn trans_trait_callee_from_llval<'blk, 'tcx>(bcx: Block<'blk, 'tcx>,
 
     // Replace the self type (&Self or Box<Self>) with an opaque pointer.
     let llcallee_ty = match callee_ty.sty {
-        ty::ty_bare_fn(_, ref f) if f.abi == Rust || f.abi == RustCall => {
+        ty::TyBareFn(_, ref f) if f.abi == Rust || f.abi == RustCall => {
             let fake_sig =
                 ty::Binder(ty::FnSig {
                     inputs: f.sig.0.inputs[1..].to_vec(),
@@ -559,7 +563,7 @@ pub fn trans_object_shim<'a, 'tcx>(
 
     let object_trait_ref =
         match object_ty.sty {
-            ty::ty_trait(ref data) => {
+            ty::TyTrait(ref data) => {
                 data.principal_trait_ref_with_self_ty(tcx, object_ty)
             }
             _ => {
@@ -620,7 +624,7 @@ pub fn trans_object_shim<'a, 'tcx>(
             RustCall => {
                 // unpack the tuple to extract the input type arguments:
                 match sig.inputs[1].sty {
-                    ty::ty_tup(ref tys) => &**tys,
+                    ty::TyTuple(ref tys) => &**tys,
                     _ => {
                         bcx.sess().bug(
                             &format!("rust-call expects a tuple not {}",

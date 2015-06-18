@@ -29,6 +29,7 @@
 #![feature(box_patterns)]
 #![feature(box_syntax)]
 #![feature(collections)]
+#![feature(const_fn)]
 #![feature(core)]
 #![feature(duration)]
 #![feature(duration_span)]
@@ -91,9 +92,12 @@ pub mod back {
     pub use rustc_back::x86_64;
 }
 
+pub mod ast_map;
+
 pub mod middle {
     pub mod astconv_util;
     pub mod astencode;
+    pub mod cast;
     pub mod cfg;
     pub mod check_const;
     pub mod check_static_recursion;
@@ -166,7 +170,4 @@ mod rustc {
 }
 
 // Build the diagnostics array at the end so that the metadata includes error use sites.
-#[cfg(stage0)]
-__build_diagnostic_array! { DIAGNOSTICS }
-#[cfg(not(stage0))]
 __build_diagnostic_array! { librustc, DIAGNOSTICS }

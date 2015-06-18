@@ -11,6 +11,7 @@
 use rustc::session::Session;
 use rustc::session::config::{self, Input, OutputFilenames};
 use rustc::session::search_paths::PathKind;
+use rustc::ast_map;
 use rustc::lint;
 use rustc::metadata;
 use rustc::metadata::creader::CrateReader;
@@ -32,12 +33,11 @@ use super::Compilation;
 use serialize::json;
 
 use std::env;
-use std::ffi::OsString;
+use std::ffi::{OsString, OsStr};
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use syntax::ast;
-use syntax::ast_map;
 use syntax::attr;
 use syntax::attr::AttrMetaMethods;
 use syntax::diagnostics;
@@ -444,7 +444,8 @@ pub fn phase_2_configure_and_expand(sess: &Session,
         }
     });
 
-    let Registry { syntax_exts, lint_passes, lint_groups, llvm_passes, .. } = registry;
+    let Registry { syntax_exts, lint_passes, lint_groups,
+                   llvm_passes, attributes, .. } = registry;
 
     {
         let mut ls = sess.lint_store.borrow_mut();
@@ -457,6 +458,7 @@ pub fn phase_2_configure_and_expand(sess: &Session,
         }
 
         *sess.plugin_llvm_passes.borrow_mut() = llvm_passes;
+        *sess.plugin_attributes.borrow_mut() = attributes.clone();
     }
 
     // Lint plugins are registered; now we can process command line flags.
@@ -482,7 +484,7 @@ pub fn phase_2_configure_and_expand(sess: &Session,
                 let mut new_path = sess.host_filesearch(PathKind::All)
                                        .get_dylib_search_paths();
                 new_path.extend(env::split_paths(&_old_path));
-                env::set_var("PATH", &env::join_paths(new_path.iter()).unwrap());
+                env::set_var("PATH", &env::join_paths(new_path).unwrap());
             }
             let features = sess.features.borrow();
             let cfg = syntax::ext::expand::ExpansionConfig {
@@ -511,7 +513,7 @@ pub fn phase_2_configure_and_expand(sess: &Session,
         let features =
             syntax::feature_gate::check_crate(sess.codemap(),
                                               &sess.parse_sess.span_diagnostic,
-                                              &krate);
+                                              &krate, &attributes);
         *sess.features.borrow_mut() = features;
         sess.abort_if_errors();
     });
@@ -541,7 +543,7 @@ pub fn phase_2_configure_and_expand(sess: &Session,
         let features =
             syntax::feature_gate::check_crate(sess.codemap(),
                                               &sess.parse_sess.span_diagnostic,
-                                              &krate);
+                                              &krate, &attributes);
         *sess.features.borrow_mut() = features;
         sess.abort_if_errors();
     });
@@ -651,7 +653,7 @@ pub fn phase_3_run_analysis_passes<'tcx>(sess: Session,
 
     // Do not move this check past lint
     time(time_passes, "stability index", (), |_|
-         ty_cx.stability.borrow_mut().build(&ty_cx.sess, krate, &public_items));
+         ty_cx.stability.borrow_mut().build(&ty_cx, krate, &public_items));
 
     time(time_passes, "intrinsic checking", (), |_|
          middle::intrinsicck::check_crate(&ty_cx));
@@ -763,7 +765,7 @@ pub fn phase_6_link_output(sess: &Session,
     let old_path = env::var_os("PATH").unwrap_or(OsString::new());
     let mut new_path = sess.host_filesearch(PathKind::All).get_tools_search_paths();
     new_path.extend(env::split_paths(&old_path));
-    env::set_var("PATH", &env::join_paths(new_path.iter()).unwrap());
+    env::set_var("PATH", &env::join_paths(&new_path).unwrap());
 
     time(sess.time_passes(), "linking", (), |_|
          link::link_binary(sess,
@@ -790,7 +792,7 @@ fn write_out_deps(sess: &Session,
         let file = outputs.path(*output_type);
         match *output_type {
             config::OutputTypeExe => {
-                for output in &*sess.crate_types.borrow() {
+                for output in sess.crate_types.borrow().iter() {
                     let p = link::filename_for_input(sess, *output,
                                                      id, &file);
                     out_filenames.push(p);
@@ -893,7 +895,7 @@ pub fn collect_crate_types(session: &Session,
     // will be found in crate attributes.
     let mut base = session.opts.crate_types.clone();
     if base.is_empty() {
-        base.extend(attr_types.into_iter());
+        base.extend(attr_types);
         if base.is_empty() {
             base.push(link::default_output_for_target(session));
         }
@@ -964,7 +966,7 @@ pub fn build_output_filenames(input: &Input,
 
             OutputFilenames {
                 out_directory: out_file.parent().unwrap_or(cur_dir).to_path_buf(),
-                out_filestem: out_file.file_stem().unwrap()
+                out_filestem: out_file.file_stem().unwrap_or(OsStr::new(""))
                                       .to_str().unwrap().to_string(),
                 single_output_file: ofile,
                 extra: sess.opts.cg.extra_filename.clone(),

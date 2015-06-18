@@ -223,7 +223,9 @@
 //! }
 //! ```
 //!
-//! `try!` is imported by the prelude, and is available everywhere.
+//! `try!` is imported by the prelude and is available everywhere, but it can only
+//! be used in functions that return `Result` because of the early return of
+//! `Err` that it provides.
 
 #![stable(feature = "rust1", since = "1.0.0")]
 
@@ -727,6 +729,26 @@ impl<T, E: fmt::Debug> Result<T, E> {
             Ok(t) => t,
             Err(e) =>
                 panic!("called `Result::unwrap()` on an `Err` value: {:?}", e)
+        }
+    }
+
+    /// Unwraps a result, yielding the content of an `Ok`.
+    ///
+    /// Panics if the value is an `Err`, with a panic message including the
+    /// passed message, and the content of the `Err`.
+    ///
+    /// # Examples
+    /// ```{.should_panic}
+    /// #![feature(result_expect)]
+    /// let x: Result<u32, &str> = Err("emergency failure");
+    /// x.expect("Testing expect"); // panics with `Testing expect: emergency failure`
+    /// ```
+    #[inline]
+    #[unstable(feature = "result_expect", reason = "newly introduced")]
+    pub fn expect(self, msg: &str) -> T {
+        match self {
+            Ok(t) => t,
+            Err(e) => panic!("{}: {:?}", msg, e),
         }
     }
 }

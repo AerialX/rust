@@ -41,9 +41,9 @@ pub fn check_drop_impl(tcx: &ty::ctxt, drop_impl_did: ast::DefId) -> Result<(), 
                          ty: ref dtor_self_type } = ty::lookup_item_type(tcx, drop_impl_did);
     let dtor_predicates = ty::lookup_predicates(tcx, drop_impl_did);
     match dtor_self_type.sty {
-        ty::ty_enum(self_type_did, self_to_impl_substs) |
-        ty::ty_struct(self_type_did, self_to_impl_substs) |
-        ty::ty_closure(self_type_did, self_to_impl_substs) => {
+        ty::TyEnum(self_type_did, self_to_impl_substs) |
+        ty::TyStruct(self_type_did, self_to_impl_substs) |
+        ty::TyClosure(self_type_did, self_to_impl_substs) => {
             try!(ensure_drop_params_and_item_params_correspond(tcx,
                                                                drop_impl_did,
                                                                dtor_generics,
@@ -238,14 +238,12 @@ fn ensure_drop_predicates_are_implied_by_item_defn<'tcx>(
 /// Let `v` be some value (either temporary or named) and 'a be some
 /// lifetime (scope). If the type of `v` owns data of type `D`, where
 ///
-///   (1.) `D` has a lifetime- or type-parametric Drop implementation, and
-///   (2.) the structure of `D` can reach a reference of type `&'a _`, and
-///   (3.) either:
-///
-///     (A.) the Drop impl for `D` instantiates `D` at 'a directly,
+/// * (1.) `D` has a lifetime- or type-parametric Drop implementation, and
+/// * (2.) the structure of `D` can reach a reference of type `&'a _`, and
+/// * (3.) either:
+///   * (A.) the Drop impl for `D` instantiates `D` at 'a directly,
 ///          i.e. `D<'a>`, or,
-///
-///     (B.) the Drop impl for `D` has some type parameter with a
+///   * (B.) the Drop impl for `D` has some type parameter with a
 ///          trait bound `T` where `T` is a trait that has at least
 ///          one method,
 ///
@@ -368,7 +366,7 @@ fn iterate_over_potentially_unsafe_regions_in_type<'a, 'tcx>(
         // with `T`, the type it represents as owned by the
         // surrounding context, before doing further analysis.
         let (typ, xref_depth) = match typ.sty {
-            ty::ty_struct(struct_did, substs) => {
+            ty::TyStruct(struct_did, substs) => {
                 if opt_phantom_data_def_id == Some(struct_did) {
                     let item_type = ty::lookup_item_type(rcx.tcx(), struct_did);
                     let tp_def = item_type.generics.types
@@ -382,11 +380,11 @@ fn iterate_over_potentially_unsafe_regions_in_type<'a, 'tcx>(
                 }
             }
 
-            // Note: When ty_uniq is removed from compiler, the
+            // Note: When TyBox is removed from compiler, the
             // definition of `Box<T>` must carry a PhantomData that
             // puts us into the previous case.
-            ty::ty_uniq(new_typ) => {
-                debug!("replacing ty_uniq {} with {}",
+            ty::TyBox(new_typ) => {
+                debug!("replacing TyBox {} with {}",
                        typ.repr(rcx.tcx()), new_typ.repr(rcx.tcx()));
                 (new_typ, xref_depth_orig + 1)
             }
@@ -397,14 +395,14 @@ fn iterate_over_potentially_unsafe_regions_in_type<'a, 'tcx>(
         };
 
         let dtor_kind = match typ.sty {
-            ty::ty_enum(def_id, _) |
-            ty::ty_struct(def_id, _) => {
+            ty::TyEnum(def_id, _) |
+            ty::TyStruct(def_id, _) => {
                 match destructor_for_type.get(&def_id) {
                     Some(def_id) => DtorKind::KnownDropMethod(*def_id),
                     None => DtorKind::PureRecur,
                 }
             }
-            ty::ty_trait(ref ty_trait) => {
+            ty::TyTrait(ref ty_trait) => {
                 DtorKind::Unknown(ty_trait.bounds.clone())
             }
             _ => DtorKind::PureRecur,
@@ -468,7 +466,7 @@ fn iterate_over_potentially_unsafe_regions_in_type<'a, 'tcx>(
             // destructor.
 
             match typ.sty {
-                ty::ty_struct(struct_did, substs) => {
+                ty::TyStruct(struct_did, substs) => {
                     debug!("typ: {} is struct; traverse structure and not type-expression",
                            typ.repr(rcx.tcx()));
                     // Don't recurse; we extract type's substructure,
@@ -477,7 +475,7 @@ fn iterate_over_potentially_unsafe_regions_in_type<'a, 'tcx>(
 
                     let fields =
                         ty::lookup_struct_fields(rcx.tcx(), struct_did);
-                    for field in fields.iter() {
+                    for field in &fields {
                         let field_type =
                             ty::lookup_field_type(rcx.tcx(),
                                                   struct_did,
@@ -498,7 +496,7 @@ fn iterate_over_potentially_unsafe_regions_in_type<'a, 'tcx>(
                     }
                 }
 
-                ty::ty_enum(enum_did, substs) => {
+                ty::TyEnum(enum_did, substs) => {
                     debug!("typ: {} is enum; traverse structure and not type-expression",
                            typ.repr(rcx.tcx()));
                     // Don't recurse; we extract type's substructure,
@@ -509,7 +507,7 @@ fn iterate_over_potentially_unsafe_regions_in_type<'a, 'tcx>(
                         ty::substd_enum_variants(rcx.tcx(),
                                                  enum_did,
                                                  substs);
-                    for variant_info in all_variant_info.iter() {
+                    for variant_info in &all_variant_info {
                         for (i, arg_type) in variant_info.args.iter().enumerate() {
                             try!(iterate_over_potentially_unsafe_regions_in_type(
                                 rcx,
@@ -528,7 +526,7 @@ fn iterate_over_potentially_unsafe_regions_in_type<'a, 'tcx>(
                     }
                 }
 
-                ty::ty_rptr(..) | ty::ty_ptr(_) | ty::ty_bare_fn(..) => {
+                ty::TyRef(..) | ty::TyRawPtr(_) | ty::TyBareFn(..) => {
                     // Don't recurse, since references, pointers,
                     // and bare functions don't own instances
                     // of the types appearing within them.
