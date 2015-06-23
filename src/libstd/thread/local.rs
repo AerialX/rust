@@ -266,9 +266,6 @@ impl<T: 'static> LocalKey<T> {
     }
 }
 
-#[cfg(all(any(target_os = "macos", target_os = "linux"),
-          not(target_arch = "aarch64"),
-          not(no_elf_tls)))]
 #[doc(hidden)]
 mod imp {
     use prelude::v1::*;
@@ -309,84 +306,8 @@ mod imp {
                 return
             }
 
-            register_dtor(self as *const _ as *mut u8,
-                          destroy_value::<T>);
             self.dtor_registered.set(true);
         }
-    }
-
-    // Since what appears to be glibc 2.18 this symbol has been shipped which
-    // GCC and clang both use to invoke destructors in thread_local globals, so
-    // let's do the same!
-    //
-    // Note, however, that we run on lots older linuxes, as well as cross
-    // compiling from a newer linux to an older linux, so we also have a
-    // fallback implementation to use as well.
-    //
-    // Due to rust-lang/rust#18804, make sure this is not generic!
-    #[cfg(target_os = "linux")]
-    unsafe fn register_dtor(t: *mut u8, dtor: unsafe extern fn(*mut u8)) {
-        use boxed;
-        use mem;
-        use ptr;
-        use libc;
-        use sys_common::thread_local as os;
-
-        extern {
-            #[linkage = "extern_weak"]
-            static __dso_handle: *mut u8;
-            #[linkage = "extern_weak"]
-            static __cxa_thread_atexit_impl: *const ();
-        }
-        if !__cxa_thread_atexit_impl.is_null() {
-            type F = unsafe extern fn(dtor: unsafe extern fn(*mut u8),
-                                      arg: *mut u8,
-                                      dso_handle: *mut u8) -> libc::c_int;
-            mem::transmute::<*const (), F>(__cxa_thread_atexit_impl)
-            (dtor, t, &__dso_handle as *const _ as *mut _);
-            return
-        }
-
-        // The fallback implementation uses a vanilla OS-based TLS key to track
-        // the list of destructors that need to be run for this thread. The key
-        // then has its own destructor which runs all the other destructors.
-        //
-        // The destructor for DTORS is a little special in that it has a `while`
-        // loop to continuously drain the list of registered destructors. It
-        // *should* be the case that this loop always terminates because we
-        // provide the guarantee that a TLS key cannot be set after it is
-        // flagged for destruction.
-        static DTORS: os::StaticKey = os::StaticKey::new(Some(run_dtors));
-        type List = Vec<(*mut u8, unsafe extern fn(*mut u8))>;
-        if DTORS.get().is_null() {
-            let v: Box<List> = box Vec::new();
-            DTORS.set(boxed::into_raw(v) as *mut u8);
-        }
-        let list: &mut List = &mut *(DTORS.get() as *mut List);
-        list.push((t, dtor));
-
-        unsafe extern fn run_dtors(mut ptr: *mut u8) {
-            while !ptr.is_null() {
-                let list: Box<List> = Box::from_raw(ptr as *mut List);
-                for &(ptr, dtor) in list.iter() {
-                    dtor(ptr);
-                }
-                ptr = DTORS.get();
-                DTORS.set(ptr::null_mut());
-            }
-        }
-    }
-
-    // OSX's analog of the above linux function is this _tlv_atexit function.
-    // The disassembly of thread_local globals in C++ (at least produced by
-    // clang) will have this show up in the output.
-    #[cfg(target_os = "macos")]
-    unsafe fn register_dtor(t: *mut u8, dtor: unsafe extern fn(*mut u8)) {
-        extern {
-            fn _tlv_atexit(dtor: unsafe extern fn(*mut u8),
-                           arg: *mut u8);
-        }
-        _tlv_atexit(dtor, t);
     }
 
     pub unsafe extern fn destroy_value<T>(ptr: *mut u8) {
@@ -396,77 +317,6 @@ mod imp {
         // `None`.
         (*ptr).dtor_running.set(true);
         intrinsics::drop_in_place((*ptr).inner.get());
-    }
-}
-
-#[cfg(any(not(any(target_os = "macos", target_os = "linux")),
-          target_arch = "aarch64",
-          no_elf_tls))]
-#[doc(hidden)]
-mod imp {
-    use prelude::v1::*;
-
-    use alloc::boxed;
-    use cell::{Cell, UnsafeCell};
-    use marker;
-    use ptr;
-    use sys_common::thread_local::StaticKey as OsStaticKey;
-
-    pub struct Key<T> {
-        // OS-TLS key that we'll use to key off.
-        os: OsStaticKey,
-        marker: marker::PhantomData<Cell<T>>,
-    }
-
-    unsafe impl<T> ::marker::Sync for Key<T> { }
-
-    struct Value<T: 'static> {
-        key: &'static Key<T>,
-        value: UnsafeCell<Option<T>>,
-    }
-
-    impl<T: 'static> Key<T> {
-        pub const fn new() -> Key<T> {
-            Key {
-                os: OsStaticKey::new(Some(destroy_value::<T>)),
-                marker: marker::PhantomData
-            }
-        }
-
-        pub unsafe fn get(&'static self) -> Option<&'static UnsafeCell<Option<T>>> {
-            let ptr = self.os.get() as *mut Value<T>;
-            if !ptr.is_null() {
-                if ptr as usize == 1 {
-                    return None
-                }
-                return Some(&(*ptr).value);
-            }
-
-            // If the lookup returned null, we haven't initialized our own local
-            // copy, so do that now.
-            let ptr: Box<Value<T>> = box Value {
-                key: self,
-                value: UnsafeCell::new(None),
-            };
-            let ptr = boxed::into_raw(ptr);
-            self.os.set(ptr as *mut u8);
-            Some(&(*ptr).value)
-        }
-    }
-
-    pub unsafe extern fn destroy_value<T: 'static>(ptr: *mut u8) {
-        // The OS TLS ensures that this key contains a NULL value when this
-        // destructor starts to run. We set it back to a sentinel value of 1 to
-        // ensure that any future calls to `get` for this thread will return
-        // `None`.
-        //
-        // Note that to prevent an infinite loop we reset it back to null right
-        // before we return from the destructor ourselves.
-        let ptr = Box::from_raw(ptr as *mut Value<T>);
-        let key = ptr.key;
-        key.os.set(1 as *mut u8);
-        drop(ptr);
-        key.os.set(ptr::null_mut());
     }
 }
 
